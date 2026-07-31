@@ -153,4 +153,29 @@ final class DispatcherTest extends TestCase
             'habilitar un plugin va del lado que cambia',
         );
     }
+
+    /**
+     * Un arranque que se niega sale con SU mensaje y código 1 — no con una traza.
+     *
+     * El mensaje dice qué archivo corregir; enterrarlo bajo un stack trace lo convierte en «el
+     * framework tronó», que manda a alguien a leer código ajeno en vez de su propia configuración.
+     */
+    public function testABootRefusalPrintsItsMessageInsteadOfATrace(): void
+    {
+        $http = \dirname(__DIR__, 2) . '/config/http.php';
+        $original = (string) file_get_contents($http);
+        // `plugins.list` declara scopes y esta app no cablea política de identidad.
+        file_put_contents($http, "<?php\n\nreturn ['expose' => ['plugins.list']];\n");
+
+        try {
+            $r = $this->correr('plugins:list');
+        } finally {
+            file_put_contents($http, $original);
+        }
+
+        self::assertSame(1, $r['codigo']);
+        self::assertStringContainsString('config/http.php', $r['texto']);
+        self::assertStringContainsString('plugins.list', $r['texto']);
+        self::assertStringNotContainsString('Stack trace', $r['texto']);
+    }
 }

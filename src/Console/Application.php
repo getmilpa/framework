@@ -68,6 +68,24 @@ final class Application
      */
     public function run(array $argv): int
     {
+        try {
+            return $this->dispatch($argv);
+        } catch (\Throwable $e) {
+            // Un arranque que se niega —una operación protegida expuesta sin política, un plugin que
+            // pide algo que nadie provee— tiene un mensaje que dice qué arreglar. Sin este catch ese
+            // mensaje sale enterrado bajo una traza, y el error se lee como un defecto del framework
+            // en vez de como una configuración por corregir.
+            $this->line('✗ ' . $e->getMessage());
+
+            return 1;
+        }
+    }
+
+    /**
+     * @param list<string> $argv
+     */
+    private function dispatch(array $argv): int
+    {
         $comando = $argv[1] ?? null;
 
         if ($comando === null || \in_array($comando, ['help', '--help', '-h', 'list'], true)) {
