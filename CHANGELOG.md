@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/getmilpa/framework/compare/v0.1.3...v0.2.0) (2026-07-31)
+
+
+### Features
+
+* the agent gets called, and operations can be served over HTTP ([03bfc20](https://github.com/getmilpa/framework/commit/03bfc20589a7df183d50ae124814dde56906635f))
+
 ## [0.1.3](https://github.com/getmilpa/framework/compare/v0.1.2...v0.1.3) (2026-07-31)
 
 
