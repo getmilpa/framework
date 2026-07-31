@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/getmilpa/framework/compare/v0.5.0...v0.5.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* document the hooks, and cut a release whose CI is green ([81e3534](https://github.com/getmilpa/framework/commit/81e35347def9b0ba3a145cf0612adf5e7c30b5f9))
+
 ## [0.5.0](https://github.com/getmilpa/framework/compare/v0.4.0...v0.5.0) (2026-07-31)
 
 
