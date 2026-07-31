@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/getmilpa/framework/compare/v0.4.0...v0.5.0) (2026-07-31)
+
+
+### Features
+
+* this app's operations emit hooks from every surface ([15d9055](https://github.com/getmilpa/framework/commit/15d9055b2dff2c751d3d140aab582bb0264310c6))
+
 ## [0.4.0](https://github.com/getmilpa/framework/compare/v0.3.0...v0.4.0) (2026-07-31)
 
 
