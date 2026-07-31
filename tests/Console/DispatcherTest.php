@@ -179,4 +179,48 @@ final class DispatcherTest extends TestCase
         self::assertSame(0, $r['codigo'], $r['texto']);
         self::assertStringNotContainsString('no registró un', $r['texto']);
     }
+
+    /**
+     * `coa shell` sin terminal pinta UN frame y sale — no se queda esperando teclas.
+     *
+     * Si el destino no es una terminal —una tubería, un redirect, CI— no hay con qué ser
+     * interactivo. Es un hecho del destino y lo sabe quien tiene el stream (ADR-0025), así que la
+     * pantalla no se entera: por eso se puede probar sin una.
+     */
+    public function testTheShellPrintsOneFrameWhenThereIsNoTerminal(): void
+    {
+        $r = $this->correr('shell');
+
+        self::assertSame(0, $r['codigo']);
+        self::assertStringContainsString('plugins.list', $r['texto']);
+        self::assertStringContainsString('Enter', $r['texto'], 'dice cómo se usa');
+    }
+
+    /** `coa chat` igual: un frame con la invitación, y sale. */
+    public function testTheChatPrintsOneFrameWhenThereIsNoTerminal(): void
+    {
+        $r = $this->correr('chat');
+
+        self::assertSame(0, $r['codigo']);
+        self::assertStringContainsString('Pregúntale algo', $r['texto']);
+    }
+
+    /**
+     * Y lo que el chat pregunta pasa por la MISMA operación `agent` que la terminal.
+     *
+     * Es lo que impide que las dos superficies contesten distinto: si el TUI armara su propio
+     * orquestador, un cambio en la operación dejaría de reflejarse aquí sin que nada lo dijera.
+     */
+    public function testTheChatAsksThroughTheSameAgentOperation(): void
+    {
+        $app = new Application(\dirname(__DIR__, 2));
+        $metodo = new \ReflectionMethod($app, 'preguntarAlAgente');
+
+        /** @var array{ok: bool, error?: string, hint?: string} $r */
+        $r = $metodo->invoke($app, 'lo que sea');
+
+        // Sin llave configurada, la respuesta es la de la operación — no una inventada aquí.
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('API key', (string) $r['error']);
+    }
 }

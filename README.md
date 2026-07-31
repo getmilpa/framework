@@ -77,6 +77,23 @@ This operation mutates and needs your authorization. Re-run with --sign.
 The declaration travels with the operation, so every surface applies the same rule. It is not a flag
 the terminal invented.
 
+## Two screens
+
+```bash
+php bin/coa shell    # everything this app can do, navigable — and runnable
+php bin/coa chat     # a conversation with the agent
+```
+
+`shell` lists the operations grouped by whether they read or change something, opens one with Enter,
+lets you fill its fields and runs it — the same coercion and the same verdict the CLI uses. An
+operation that demands a **signature** is not run from there: a signature names *this* call and is
+produced with a key that lives outside the screen, so the form refuses and prints the exact
+`coa … --sign` line instead. `Esc` goes back.
+
+Neither is an operation, and neither pretends to be: an operation runs with what it was given and
+answers. These converse. Piped or in CI they print one frame and exit — whether there is a terminal
+is a fact of the destination, not of the screen.
+
 ## The agent
 
 `milpa/ai-gateway` ships the loop that alternates model ↔ tools. `coa agent` is the line that calls
@@ -92,6 +109,20 @@ Without a key it says so and stops. There is no demo mode: an agent that answers
 without having called anything teaches you to trust answers nobody produced. The answer comes back
 with how many steps it took and how many tools it had, because "the agent replied" does not
 distinguish using your app from replying from memory.
+
+**Your own model works too.** Point it at anything OpenAI-compatible — an Ollama on your LAN, a
+vLLM, a proxy — and no token leaves the building:
+
+```bash
+export MILPA_AGENT_BASE_URL=https://llama.local
+export MILPA_AGENT_BASIC_AUTH=user:pass      # if the endpoint asks for it
+export MILPA_AGENT_MODEL=qwen3-coder:30b
+php bin/coa agent "which plugins are on?"
+```
+
+A declared endpoint wins over any provider key sitting in the environment: whoever pointed their
+agent at a local model does not want a forgotten `ANTHROPIC_API_KEY` sending it elsewhere — and
+billing them.
 
 It is a **terminal** operation only. An agent running over HTTP with the server's credentials is a
 different decision, and this template does not take it for you.
@@ -167,6 +198,7 @@ src/Plugins/HelloPlugin  proof of life: one route, one response
 src/Plugins/OperationsHttpPlugin  serves whatever config/http.php names
 src/Operations            this app's own atoms — `agent` and `token:*` live here
 src/Auth                  the API-token store and the verifier behind them
+src/Tui                   the agent conversation screen
 ```
 
 `config/plugins.php` is a list, not a scan. What runs in this app is a versioned decision — a plugin

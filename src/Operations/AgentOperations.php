@@ -160,7 +160,14 @@ class AgentOperations implements CommandProvider
         callable $onStep,
     ): string {
         $orquestador = new AgentOrchestrator(
-            new LlmService($llave, $modelo, $proveedor, new NullLogger()),
+            new LlmService(
+                $llave,
+                $modelo,
+                $proveedor,
+                new NullLogger(),
+                baseUrl: $this->baseUrl(),
+                extraHeaders: $this->extraHeaders(),
+            ),
             new McpClientService($registry),
             $pasos,
             new NullLogger(),
@@ -175,6 +182,44 @@ class AgentOperations implements CommandProvider
     }
 
     /**
+     * A dónde va el agente: el proveedor público, o el endpoint que esta app declare.
+     *
+     * `MILPA_AGENT_BASE_URL` apunta a cualquier cosa compatible con la API de OpenAI — un Ollama en
+     * la LAN, un vLLM, un proxy. Existe por dos razones que se parecen poco: probar el bucle sin
+     * gastarle tokens a un proveedor público, y correrlo con datos que no pueden salir de la casa.
+     */
+    private function baseUrl(): ?string
+    {
+        $config = $this->container->has(Config::class) ? $this->container->get(Config::class) : null;
+        $declarado = $config instanceof Config ? $config->get('agent.baseUrl') : null;
+        if (\is_string($declarado) && $declarado !== '') {
+            return $declarado;
+        }
+
+        $entorno = getenv('MILPA_AGENT_BASE_URL');
+
+        return \is_string($entorno) && $entorno !== '' ? $entorno : null;
+    }
+
+    /**
+     * Encabezados extra para el endpoint — auth básica, si la hay.
+     *
+     * `MILPA_AGENT_BASIC_AUTH` en la forma `usuario:contraseña`. Un endpoint local detrás de auth
+     * básica no acepta el Bearer del proveedor, y sin esto la única salida era no usarlo.
+     *
+     * @return array<string,string>
+     */
+    private function extraHeaders(): array
+    {
+        $basica = getenv('MILPA_AGENT_BASIC_AUTH');
+        if (!\is_string($basica) || !str_contains($basica, ':')) {
+            return [];
+        }
+
+        return ['Authorization' => 'Basic ' . base64_encode($basica)];
+    }
+
+    /**
      * La llave, el proveedor y el modelo — de las variables de entorno, o `null` si no hay ninguna.
      *
      * Anthropic primero porque es el default de la casa. El modelo se puede fijar en `config/app.php`
@@ -186,6 +231,18 @@ class AgentOperations implements CommandProvider
     {
         $config = $this->container->has(Config::class) ? $this->container->get(Config::class) : null;
         $modeloDeclarado = $config instanceof Config ? $config->get('agent.model') : null;
+
+        // Un endpoint propio manda: quien apuntó su agente a un modelo local no quiere que una
+        // ANTHROPIC_API_KEY olvidada en el entorno lo mande a otro lado —y a cobrar.
+        if ($this->baseUrl() !== null) {
+            $llaveLocal = getenv('MILPA_AGENT_API_KEY');
+
+            return [
+                'openai',
+                \is_string($llaveLocal) && $llaveLocal !== '' ? $llaveLocal : 'local',
+                \is_string($modeloDeclarado) ? $modeloDeclarado : (getenv('MILPA_AGENT_MODEL') ?: 'qwen3-coder:30b'),
+            ];
+        }
 
         $anthropic = getenv('ANTHROPIC_API_KEY');
         if (\is_string($anthropic) && $anthropic !== '') {

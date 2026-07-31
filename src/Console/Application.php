@@ -21,6 +21,9 @@ use Milpa\Console\CliRunner;
 use Milpa\Console\Rendering\JsonCliRenderer;
 use Milpa\Console\Rendering\PlainTextCliRenderer;
 use Milpa\Interfaces\Di\DIContainerInterface;
+use App\Tui\AgentScreen;
+use Milpa\Console\Tui\OperationsScreen;
+use Milpa\Live\Tui\StreamTerminal;
 use Milpa\Runtime\Kernel;
 
 /**
@@ -92,6 +95,17 @@ final class Application
             return $this->help();
         }
 
+        // Las dos pantallas. No son operaciones y no lo fingen: una operación se ejecuta con lo que
+        // trae y contesta, y esto CONVERSA — captura teclas hasta que alguien sale. Que vivan aquí y
+        // no en `config/operations.php` es la misma distinción que dejó fuera a `coa:run`.
+        if ($comando === 'shell') {
+            return $this->pantalla(new OperationsScreen($this->all(), $this->kernel()->container(), ...$this->tamano()));
+        }
+
+        if ($comando === 'chat') {
+            return $this->pantalla(new AgentScreen($this->preguntarAlAgente(...), ...$this->tamano()));
+        }
+
         $operacion = $this->find($comando);
         if ($operacion === null) {
             $this->line("✗ no existe el comando «{$comando}»");
@@ -104,6 +118,65 @@ final class Application
 
         return (new CliRunner(renderer: \in_array('--json', $resto, true) ? new JsonCliRenderer() : new PlainTextCliRenderer()))
             ->run($operacion, $this->tokens($operacion, $resto), $this->kernel()->container(), $this->line(...));
+    }
+
+    /**
+     * Corre una pantalla contra la terminal — o pinta un frame y sale, si no hay terminal.
+     *
+     * Si el destino no es una terminal —una tubería, un redirect, CI— no hay con qué ser
+     * interactivo. Es un hecho del DESTINO y lo sabe quien tiene el stream (ADR-0025): la pantalla
+     * no se entera, y por eso se puede probar sin una.
+     */
+    private function pantalla(OperationsScreen|AgentScreen $pantalla): int
+    {
+        if (!(\function_exists('stream_isatty') && @stream_isatty(\STDIN))) {
+            $this->line($pantalla->render());
+
+            return 0;
+        }
+
+        $pantalla->loop()->runOn(new StreamTerminal('coa'));
+
+        return 0;
+    }
+
+    /**
+     * El ancho y el alto de la terminal, o un tamaño razonable si no hay una.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function tamano(): array
+    {
+        $terminal = new StreamTerminal('coa');
+
+        return [$terminal->columns(), $terminal->rows()];
+    }
+
+    /**
+     * Le pregunta al agente, por el MISMO camino que `coa agent`.
+     *
+     * La pantalla no arma el orquestador ni elige proveedor: eso lo sabe `AgentOperations`, y
+     * repetirlo aquí sería un segundo camino a lo mismo — como se llega a que la terminal y el TUI
+     * contesten distinto.
+     *
+     * @return array{ok: bool, answer?: string, steps?: int, tools?: int, error?: string, hint?: string}
+     */
+    private function preguntarAlAgente(string $prompt): array
+    {
+        foreach ($this->all() as $operacion) {
+            if ($operacion->name !== 'agent') {
+                continue;
+            }
+            $handler = $operacion->handler;
+            if (\is_callable($handler)) {
+                /** @var array{ok: bool, answer?: string, steps?: int, tools?: int, error?: string, hint?: string} $r */
+                $r = $handler(['prompt' => $prompt]);
+
+                return $r;
+            }
+        }
+
+        return ['ok' => false, 'error' => 'esta app no declara la operación `agent`'];
     }
 
     /**
