@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Milpa\Container\DIContainer;
 use Milpa\Plugin\Activation\ActivePlugins;
+use Milpa\Plugin\Contracts\AppRoot;
 
 /**
  * What every entry point needs before `Milpa\Runtime\Kernel::boot()` can run: the container, and
@@ -22,6 +23,12 @@ use Milpa\Plugin\Activation\ActivePlugins;
  * @return array{container: DIContainer, plugins: list<class-string>}
  */
 $container = new DIContainer();
+
+// Dónde vive esta app. `milpa/plugin` lo pregunta en vez de calcularlo desde su propio archivo
+// —instalado por Composer, contar directorios hacia arriba apunta adentro de `vendor/`— y con esta
+// línea aparecen sus dos operaciones que tocan disco: `plugins:verify` y `plugins:lock`. Sin ella no
+// se ofrecen, que es preferible a ofrecerlas apuntando a una ruta inventada.
+$container->registerService(AppRoot::class, new AppRoot(\dirname(__DIR__)));
 
 /** @var list<class-string> $declared */
 $declared = require __DIR__ . '/plugins.php';

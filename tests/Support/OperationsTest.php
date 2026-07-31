@@ -97,7 +97,9 @@ final class OperationsTest extends TestCase
     {
         $nombres = array_map(static fn ($op): string => $op->name, Operations::all($this->kernel(), $this->root()));
 
-        foreach (['plugins.list', 'plugins.deps', 'plugins.simulate', 'validate', 'make', 'agent'] as $esperada) {
+        // `verify` y `lock` están porque `config/boot.php` registra un `AppRoot`. Sin él no
+        // aparecerían —el paquete no adivina dónde vive la app— y esta lista lo mediría.
+        foreach (['plugins.list', 'plugins.deps', 'plugins.simulate', 'plugins.verify', 'plugins.lock', 'validate', 'make', 'agent'] as $esperada) {
             self::assertContains($esperada, $nombres);
         }
     }
