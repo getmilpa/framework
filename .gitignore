@@ -1,9 +1,8 @@
-# Estado de ejecución, no fuente.
-#
-# `plugins.json` lo escribe `plugins:enable`/`:disable`: dice qué está encendido EN ESTA copia. Un
-# `create-project` empieza con lo que `config/plugins.php` declara, y versionar el store haría que
-# cada clon heredara los encendidos de quien lo publicó.
-/storage/plugins.json
+# El estado de ejecución se ignora desde `storage/.gitignore`, no desde aquí, y la diferencia es
+# funcional: ese archivo usa `*` + `!.gitignore`, así que ignora el contenido Y CONSERVA el
+# directorio. Ignorarlo desde la raíz dejaba `storage/` sin un solo archivo rastreado, git no versiona
+# directorios vacíos, y un `create-project` recién clonado tronaba al primer `plugins:disable`
+# —código 255— porque no había dónde escribir. Lo cazó el CI del repo publicado en su primer push.
 /vendor/
 /composer.lock
 /.php-cs-fixer.cache
