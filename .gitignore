@@ -1,0 +1,10 @@
+# Estado de ejecución, no fuente.
+#
+# `plugins.json` lo escribe `plugins:enable`/`:disable`: dice qué está encendido EN ESTA copia. Un
+# `create-project` empieza con lo que `config/plugins.php` declara, y versionar el store haría que
+# cada clon heredara los encendidos de quien lo publicó.
+/storage/plugins.json
+/vendor/
+/composer.lock
+/.php-cs-fixer.cache
+/.phpunit.cache/

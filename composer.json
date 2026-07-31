@@ -1,0 +1,55 @@
+{
+  "name": "milpa/framework",
+  "description": "The composer create-project starting point for a Milpa app: a runtime whose every capability is a declared Operation, reachable from the terminal, from MCP and from a TUI at once. No database, no web framework \u2014 an agent-operable substrate you extend with plugins.",
+  "type": "project",
+  "license": "Apache-2.0",
+  "keywords": [
+    "milpa",
+    "framework",
+    "ai-agents",
+    "mcp",
+    "cli",
+    "plugins"
+  ],
+  "authors": [
+    {
+      "name": "Rodrigo Vicente - TeamX Agency",
+      "homepage": "https://x.com/rodrigoteamx"
+    }
+  ],
+  "require": {
+    "php": ">=8.3",
+    "milpa/ai-gateway": "^0.3",
+    "milpa/command": "^0.3",
+    "milpa/console": "^0.2",
+    "milpa/core": "^0.6",
+    "milpa/devtools": "^0.9",
+    "milpa/mcp-server": "^0.4",
+    "milpa/plugin": "^0.4",
+    "milpa/runtime": "^0.6",
+    "milpa/tool-runtime": "^0.9",
+    "nyholm/psr7": "^1.8",
+    "nyholm/psr7-server": "^1.1"
+  },
+  "require-dev": {
+    "friendsofphp/php-cs-fixer": "^3.65",
+    "phpstan/phpstan": "^2.1",
+    "phpunit/phpunit": "^11.5"
+  },
+  "autoload": {
+    "psr-4": {
+      "App\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "App\\Tests\\": "tests/"
+    }
+  },
+  "bin": [
+    "bin/coa"
+  ],
+  "config": {
+    "sort-packages": true
+  }
+}
