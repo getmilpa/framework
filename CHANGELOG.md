@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/getmilpa/framework/compare/v0.2.0...v0.2.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* tell milpa/plugin where this app lives, and gain verify + lock ([3d2f4b4](https://github.com/getmilpa/framework/commit/3d2f4b4dfbd0b300cb1a8b0dfdcdc191f6fc06e7))
+
 ## [0.2.0](https://github.com/getmilpa/framework/compare/v0.1.3...v0.2.0) (2026-07-31)
 
 
