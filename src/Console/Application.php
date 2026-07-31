@@ -264,7 +264,7 @@ final class Application
         /** @var array<string, mixed> $config */
         $config = require $this->root . '/config/app.php';
 
-        return $this->booted = Kernel::boot([
+        $kernel = Kernel::boot([
             'root' => $this->root,
             'plugins' => $boot['plugins'],
             'config' => $config,
@@ -274,6 +274,14 @@ final class Application
             // operaciones. Un registro que sólo existe en un modo produce dos inventarios.
             'toolRegistry' => new \Milpa\ToolRuntime\ToolRegistry(new \Psr\Log\NullLogger()),
         ]);
+
+        // El kernel, en su propio contenedor. Un handler que corre DESPUÉS del arranque —el agente,
+        // por ejemplo— necesita preguntar qué declara esta app, y sin esto tendría que volver a
+        // resolverlo por su cuenta: dos respuestas a la misma pregunta, que es como se llega a que
+        // una superficie ofrezca lo que la otra no.
+        $boot['container']->registerService(Kernel::class, $kernel);
+
+        return $this->booted = $kernel;
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Milpa\Plugin\Operations\PluginManagementPlugin;
 use App\Plugins\HelloPlugin\HelloPlugin;
+use App\Plugins\OperationsHttpPlugin\OperationsHttpPlugin;
 
 /**
  * Los plugins que esta app arranca.
@@ -22,4 +23,7 @@ use App\Plugins\HelloPlugin\HelloPlugin;
 return [
     PluginManagementPlugin::class,
     HelloPlugin::class,
+
+    // Sirve por HTTP las operaciones que `config/http.php` nombre — ninguna, hasta que nombres una.
+    OperationsHttpPlugin::class,
 ];

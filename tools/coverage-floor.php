@@ -7,7 +7,7 @@
  *
  * @license Apache-2.0
  *
- * @link    https://github.com/getmilpa/skeleton
+ * @link    https://github.com/getmilpa/framework
  */
 
 declare(strict_types=1);

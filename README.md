@@ -77,6 +77,43 @@ This operation mutates and needs your authorization. Re-run with --sign.
 The declaration travels with the operation, so every surface applies the same rule. It is not a flag
 the terminal invented.
 
+## The agent
+
+`milpa/ai-gateway` ships the loop that alternates model ↔ tools. `coa agent` is the line that calls
+it, and what it hands the model is not a separate catalogue: it is **this app's operations**, the
+same ones an MCP client sees.
+
+```bash
+export ANTHROPIC_API_KEY=...      # or OPENAI_API_KEY
+php bin/coa agent "which plugins are on, and would enabling the other one resolve?"
+```
+
+Without a key it says so and stops. There is no demo mode: an agent that answers something plausible
+without having called anything teaches you to trust answers nobody produced. The answer comes back
+with how many steps it took and how many tools it had, because "the agent replied" does not
+distinguish using your app from replying from memory.
+
+It is a **terminal** operation only. An agent running over HTTP with the server's credentials is a
+different decision, and this template does not take it for you.
+
+## Serving operations over HTTP
+
+The fourth surface. `config/http.php` names which operations get a route — and it is **empty**:
+
+```php
+return ['expose' => ['plugins.list']];   //  →  GET /plugins
+```
+
+`coa` and MCP run on the machine of whoever invokes them; an HTTP route can be called by anyone who
+reaches the server. Exposing everything by default would turn installing a plugin into publishing an
+API nobody decided on. Same doctrine as `config/plugins.php`: what runs is a versioned decision.
+
+An operation that declares `scopes` or `permission` needs someone to decide whether the caller may.
+**Boot stops** if you expose one without a policy — the error reaches whoever configured it instead
+of whoever called. Register a `Milpa\Console\Http\OperationHttpPolicy` (`milpa/admin` publishes the
+one that uses `milpa/auth`) or expose only unprotected operations. All seven `plugins.*` operations
+declare scopes, so an app with no identity wired can serve `validate` and `make`, not those.
+
 ## What is opt-in, and why
 
 The box is deliberately small. Two examples of what it does **not** include:
@@ -95,9 +132,12 @@ bin/coa                  the dispatcher — boots, projects, runs
 bin/mcp-server.php       the same operations, over MCP
 config/plugins.php       which plugins boot (a list you read in a diff)
 config/operations.php    which packages contribute operations
+config/http.php          which operations get an HTTP route (empty by default)
 config/app.php           the config bag plugins read in boot()
 public/index.php         the HTTP entry point
 src/Plugins/HelloPlugin  proof of life: one route, one response
+src/Plugins/OperationsHttpPlugin  serves whatever config/http.php names
+src/Operations            this app's own atoms — `agent` lives here
 ```
 
 `config/plugins.php` is a list, not a scan. What runs in this app is a versioned decision — a plugin

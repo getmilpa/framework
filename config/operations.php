@@ -26,4 +26,8 @@ declare(strict_types=1);
  */
 return [
     Milpa\DevTools\Operations\DevToolsOperations::class,
+
+    // El agente de esta app: `coa agent "..."`. Ve las mismas operaciones que un cliente MCP, y sin
+    // API key configurada dice qué falta en vez de fingir una respuesta.
+    App\Operations\AgentOperations::class,
 ];

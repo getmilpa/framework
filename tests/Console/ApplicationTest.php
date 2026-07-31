@@ -77,7 +77,7 @@ final class ApplicationTest extends TestCase
         // no tienen nada que ver con lo que mide.
         $nombres = array_column($json['result']['plugins'], 'name');
         sort($nombres);
-        self::assertSame(['HelloPlugin', 'PluginManagement'], $nombres);
+        self::assertSame(['HelloPlugin', 'OperationsHttp', 'PluginManagement'], $nombres);
     }
 
     /**
