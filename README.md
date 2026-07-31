@@ -108,11 +108,38 @@ return ['expose' => ['plugins.list']];   //  →  GET /plugins
 reaches the server. Exposing everything by default would turn installing a plugin into publishing an
 API nobody decided on. Same doctrine as `config/plugins.php`: what runs is a versioned decision.
 
-An operation that declares `scopes` or `permission` needs someone to decide whether the caller may.
-**Boot stops** if you expose one without a policy — the error reaches whoever configured it instead
-of whoever called. Register a `Milpa\Console\Http\OperationHttpPolicy` (`milpa/admin` publishes the
-one that uses `milpa/auth`) or expose only unprotected operations. All seven `plugins.*` operations
-declare scopes, so an app with no identity wired can serve `validate` and `make`, not those.
+### Identity, so the protected ones can be served too
+
+Most operations worth exposing declare `scopes` — all twelve `plugins.*` do. This app wires the three
+pieces that make them servable, in `config/boot.php`:
+
+1. a **token store** (`milpa/data`, file-backed by default — change the driver in `config/app.php`),
+2. a **verifier** that turns `Authorization: Bearer …` into an actor with scopes,
+3. a **policy** (`milpa/auth`) that decides whether that actor may run *this* operation.
+
+Mint a token, expose the operation, call it:
+
+```bash
+php bin/coa token:new ci --scopes=plugins:read
+#  token: 6e59b6a4…      ← shown once; only its hash is stored
+```
+
+```php
+// config/http.php
+return ['expose' => ['plugins.list']];
+```
+
+```bash
+curl -H "Authorization: Bearer 6e59b6a4…" localhost:8000/plugins   # 200
+curl localhost:8000/plugins                                        # 401 MILPA_AUTH_CONTEXT_MISSING
+```
+
+A token with the wrong scopes gets a 403 that names what was missing. `token:list` never prints the
+secret or its hash, `token:revoke` takes effect on the next request, and the three token operations
+are **terminal-only**: whoever can mint a token can mint one with every scope.
+
+Remove those three lines from `config/boot.php` and the app still runs whole over the terminal and
+MCP — it just cannot expose anything that declares scopes, and the boot says so.
 
 ## What is opt-in, and why
 
@@ -133,11 +160,13 @@ bin/mcp-server.php       the same operations, over MCP
 config/plugins.php       which plugins boot (a list you read in a diff)
 config/operations.php    which packages contribute operations
 config/http.php          which operations get an HTTP route (empty by default)
+config/boot.php          the container, the plugin list, and the identity chain
 config/app.php           the config bag plugins read in boot()
 public/index.php         the HTTP entry point
 src/Plugins/HelloPlugin  proof of life: one route, one response
 src/Plugins/OperationsHttpPlugin  serves whatever config/http.php names
-src/Operations            this app's own atoms — `agent` lives here
+src/Operations            this app's own atoms — `agent` and `token:*` live here
+src/Auth                  the API-token store and the verifier behind them
 ```
 
 `config/plugins.php` is a list, not a scan. What runs in this app is a versioned decision — a plugin
@@ -158,7 +187,8 @@ build up from. Its one unique capability, the HTTP projection of operations, now
 ## What this is NOT
 
 It is not a web framework and it will not become one. There is no ORM, no template engine, no
-router-with-batteries. `milpa/http` ships routing **contracts**; bring your own PSR-7 implementation
+router-with-batteries. `milpa/data` is here for one job — storing API tokens — and its four drivers
+(file, sqlite, mysql, memory) are as much persistence as this floor takes a position on. `milpa/http` ships routing **contracts**; bring your own PSR-7 implementation
 (this app ships `nyholm/psr7`) and your own persistence.
 
 ## License

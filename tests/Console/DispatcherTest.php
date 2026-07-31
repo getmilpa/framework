@@ -155,27 +155,28 @@ final class DispatcherTest extends TestCase
     }
 
     /**
-     * Un arranque que se niega sale con SU mensaje y código 1 — no con una traza.
+     * Con identidad cableada, exponer una operación protegida YA no detiene el arranque.
      *
-     * El mensaje dice qué archivo corregir; enterrarlo bajo un stack trace lo convierte en «el
-     * framework tronó», que manda a alguien a leer código ajeno en vez de su propia configuración.
+     * Es la prueba de que las tres piezas están conectadas: almacén, verificador y política. Antes de
+     * que esta plantilla cableara `milpa/auth`, `plugins.list` —que declara `plugins:read`— no se
+     * podía servir por HTTP de ninguna manera, y el arranque lo decía. Ahora se puede.
+     *
+     * La negativa sigue probada donde corresponde: {@see \App\Tests\Http\OperationsHttpTest} arma un
+     * contenedor SIN política y comprueba que ahí sí se niega.
      */
-    public function testABootRefusalPrintsItsMessageInsteadOfATrace(): void
+    public function testWithIdentityWiredAProtectedOperationCanBeExposed(): void
     {
         $http = \dirname(__DIR__, 2) . '/config/http.php';
         $original = (string) file_get_contents($http);
-        // `plugins.list` declara scopes y esta app no cablea política de identidad.
         file_put_contents($http, "<?php\n\nreturn ['expose' => ['plugins.list']];\n");
 
         try {
-            $r = $this->correr('plugins:list');
+            $r = $this->correr('plugins:list', '--json');
         } finally {
             file_put_contents($http, $original);
         }
 
-        self::assertSame(1, $r['codigo']);
-        self::assertStringContainsString('config/http.php', $r['texto']);
-        self::assertStringContainsString('plugins.list', $r['texto']);
-        self::assertStringNotContainsString('Stack trace', $r['texto']);
+        self::assertSame(0, $r['codigo'], $r['texto']);
+        self::assertStringNotContainsString('no registró un', $r['texto']);
     }
 }

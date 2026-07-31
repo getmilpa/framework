@@ -30,4 +30,8 @@ return [
     // El agente de esta app: `coa agent "..."`. Ve las mismas operaciones que un cliente MCP, y sin
     // API key configurada dice qué falta en vez de fingir una respuesta.
     App\Operations\AgentOperations::class,
+
+    // Los tokens con que alguien se identifica ante esta app por HTTP. Sólo terminal: quien puede
+    // acuñar un token puede acuñar uno con todos los scopes.
+    App\Operations\TokenOperations::class,
 ];

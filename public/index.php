@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Milpa\Auth\Contracts\CredentialVerifier;
+use Milpa\Auth\Http\AuthenticateMiddleware;
 use Milpa\Runtime\Http\RequestHandler;
 use Milpa\Runtime\Kernel;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -33,7 +35,18 @@ $psr17 = new Psr17Factory();
 $request = (new ServerRequestCreator($psr17, $psr17, $psr17, $psr17))->fromGlobals();
 
 $handler = new RequestHandler($kernel, $psr17);
-$response = $handler->handle($request);
+
+// La cadena de autenticación, si esta app la cableó. `AuthenticateMiddleware` resuelve el
+// `Authorization: Bearer …` a un contexto verificado y lo deja en el atributo que las compuertas
+// leen. Es fail-open a propósito: autenticar no es autorizar — quien decide si la falta de actor es
+// un 401 o una ruta pública es la política de cada operación, no esto.
+//
+// Sin verificador registrado el pipeline es el de antes, y una operación con scopes simplemente no
+// se puede exponer (config/http.php lo dice al arrancar).
+$container = $kernel->container();
+$response = $container->has(CredentialVerifier::class)
+    ? (new AuthenticateMiddleware($container->get(CredentialVerifier::class)))->process($request, $handler)
+    : $handler->handle($request);
 
 http_response_code($response->getStatusCode());
 foreach ($response->getHeaders() as $name => $values) {

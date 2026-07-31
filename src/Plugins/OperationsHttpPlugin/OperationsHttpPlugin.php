@@ -18,7 +18,7 @@ use App\Support\Operations;
 use Milpa\Attributes\PluginMetadata;
 use Milpa\Command\Operation;
 use Milpa\Console\Http\HttpProjector;
-use Milpa\Console\Http\OperationHttpPolicy;
+use Milpa\Command\OperationHttpPolicy;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
 use Milpa\Runtime\Http\RouteProviderInterface;

@@ -17,7 +17,7 @@ namespace App\Tests\Http;
 use App\Plugins\OperationsHttpPlugin\OperationsHttpPlugin;
 use Milpa\Command\Operation;
 use Milpa\Console\Http\HttpProjector;
-use Milpa\Console\Http\OperationHttpPolicy;
+use Milpa\Command\OperationHttpPolicy;
 use Milpa\Container\DIContainer;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
