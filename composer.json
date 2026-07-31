@@ -21,7 +21,7 @@
     "php": ">=8.3",
     "milpa/ai-gateway": "^0.3",
     "milpa/command": "^0.3",
-    "milpa/console": "^0.3",
+    "milpa/console": "^0.4",
     "milpa/core": "^0.6",
     "milpa/devtools": "^0.9",
     "milpa/mcp-server": "^0.4",

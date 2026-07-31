@@ -103,6 +103,18 @@ src/Plugins/HelloPlugin  proof of life: one route, one response
 `config/plugins.php` is a list, not a scan. What runs in this app is a versioned decision — a plugin
 that installs itself from the network is an attack surface, not a convenience.
 
+## Coming from `milpa/skeleton`
+
+`milpa/skeleton` was the previous `composer create-project` target and is now **abandoned** — this
+package replaces it. Two entry points both saying *start here* is a second source of truth, and the
+one a newcomer lands on decides what they believe Milpa is.
+
+An app you already created from the skeleton keeps working: what it runs is your code, not that
+package. If you are starting a new one, start here. What the skeleton brought and this does not are
+`milpa/auth` and `milpa/data` — add them when your app needs them, which is the point of a floor you
+build up from. Its one unique capability, the HTTP projection of operations, now lives in
+`milpa/console` (with the auth-backed policy in `milpa/admin`).
+
 ## What this is NOT
 
 It is not a web framework and it will not become one. There is no ORM, no template engine, no
