@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/getmilpa/framework/compare/v0.2.1...v0.2.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* a boot refusal prints its message instead of a stack trace ([733860c](https://github.com/getmilpa/framework/commit/733860c5513005c50e096583a0e3384ecb3647da))
+
 ## [0.2.1](https://github.com/getmilpa/framework/compare/v0.2.0...v0.2.1) (2026-07-31)
 
 
