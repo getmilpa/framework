@@ -273,4 +273,86 @@ final class AgentOperationTest extends TestCase
         self::assertFalse($op->supportsSurface('http'));
         self::assertFalse($op->supportsSurface('mcp'), 'un agente que se ofrece a otro agente es un bucle que nadie pidió');
     }
+
+    /**
+     * Un endpoint declarado GANA sobre cualquier llave de proveedor que ande en el entorno.
+     *
+     * Quien apuntó su agente a un modelo local no quiere que una `ANTHROPIC_API_KEY` olvidada lo mande
+     * a otro lado — y a cobrar. Se comprueba por lo que llega a `ask()`, que es lo que decide a dónde
+     * sale la petición.
+     */
+    public function testADeclaredEndpointWinsOverAProviderKeyInTheEnvironment(): void
+    {
+        putenv('ANTHROPIC_API_KEY=una-llave-olvidada');
+        putenv('MILPA_AGENT_BASE_URL=https://llama.local');
+        putenv('MILPA_AGENT_MODEL=qwen3-coder:30b');
+        putenv('MILPA_AGENT_API_KEY=local');
+
+        try {
+            $kernel = \App\Tests\Support\OperationsTest::bootedKernel();
+            $agente = new class ($kernel->container()) extends AgentOperations {
+                /** @var array<string, string> */
+                public static array $visto = [];
+
+                protected function ask(
+                    string $prompt,
+                    int $pasos,
+                    \Milpa\ToolRuntime\ToolRegistry $registry,
+                    string $proveedor,
+                    string $llave,
+                    string $modelo,
+                    callable $onStep,
+                ): string {
+                    static::$visto = ['proveedor' => $proveedor, 'llave' => $llave, 'modelo' => $modelo];
+
+                    return 'ok';
+                }
+            };
+
+            $handler = $this->operacionDe($agente)->handler;
+            self::assertIsCallable($handler);
+            $handler(['prompt' => 'algo']);
+
+            $visto = $agente::$visto;
+            self::assertSame('openai', $visto['proveedor'], 'un endpoint local habla el dialecto de OpenAI');
+            self::assertSame('local', $visto['llave'], 'la llave del proveedor público no se usa');
+            self::assertSame('qwen3-coder:30b', $visto['modelo']);
+        } finally {
+            putenv('MILPA_AGENT_BASE_URL');
+            putenv('MILPA_AGENT_MODEL');
+            putenv('MILPA_AGENT_API_KEY');
+        }
+    }
+
+    /**
+     * La auth básica del endpoint viaja como encabezado, no como llave.
+     *
+     * Un endpoint local detrás de auth básica no acepta el Bearer del proveedor, y sin esto la única
+     * salida era no usarlo.
+     */
+    public function testBasicAuthBecomesAnAuthorizationHeader(): void
+    {
+        putenv('MILPA_AGENT_BASIC_AUTH=llama:llam4');
+
+        try {
+            $agente = new AgentOperations(new DIContainer());
+            $metodo = new \ReflectionMethod($agente, 'extraHeaders');
+            /** @var array<string, string> $headers */
+            $headers = $metodo->invoke($agente);
+
+            self::assertSame('Basic ' . base64_encode('llama:llam4'), $headers['Authorization']);
+        } finally {
+            putenv('MILPA_AGENT_BASIC_AUTH');
+        }
+    }
+
+    /** Sin auth básica declarada no se inventa ningún encabezado. */
+    public function testWithoutBasicAuthNoHeaderIsInvented(): void
+    {
+        putenv('MILPA_AGENT_BASIC_AUTH');
+
+        $metodo = new \ReflectionMethod(new AgentOperations(new DIContainer()), 'extraHeaders');
+
+        self::assertSame([], $metodo->invoke(new AgentOperations(new DIContainer())));
+    }
 }
