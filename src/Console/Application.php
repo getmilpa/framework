@@ -99,7 +99,12 @@ final class Application
         // trae y contesta, y esto CONVERSA — captura teclas hasta que alguien sale. Que vivan aquí y
         // no en `config/operations.php` es la misma distinción que dejó fuera a `coa:run`.
         if ($comando === 'shell') {
-            return $this->pantalla(new OperationsScreen($this->all(), $this->kernel()->container(), ...$this->tamano()));
+            return $this->pantalla(new OperationsScreen(
+                $this->all(),
+                $this->kernel()->container(),
+                ...$this->tamano(),
+                dispatcher: $this->kernel()->dispatcher(),
+            ));
         }
 
         if ($comando === 'chat') {
@@ -116,8 +121,12 @@ final class Application
 
         $resto = \array_slice($argv, 2);
 
-        return (new CliRunner(renderer: \in_array('--json', $resto, true) ? new JsonCliRenderer() : new PlainTextCliRenderer()))
-            ->run($operacion, $this->tokens($operacion, $resto), $this->kernel()->container(), $this->line(...));
+        return (new CliRunner(
+            renderer: \in_array('--json', $resto, true) ? new JsonCliRenderer() : new PlainTextCliRenderer(),
+            // El despachador del kernel viaja al runner: sin él, un listener que audita operaciones
+            // las vería por MCP y no por la terminal — que es el hueco que el runner vino a cerrar.
+            dispatcher: $this->kernel()->dispatcher(),
+        ))->run($operacion, $this->tokens($operacion, $resto), $this->kernel()->container(), $this->line(...));
     }
 
     /**

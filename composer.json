@@ -22,7 +22,7 @@
     "milpa/ai-gateway": "^0.3.1",
     "milpa/auth": "^0.3.1",
     "milpa/command": "^0.3.1",
-    "milpa/console": "^0.5",
+    "milpa/console": "^0.6",
     "milpa/core": "^0.6",
     "milpa/data": "^0.2",
     "milpa/devtools": "^0.9.2",
