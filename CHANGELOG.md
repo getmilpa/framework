@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/getmilpa/framework/compare/v0.3.0...v0.4.0) (2026-07-31)
+
+
+### Features
+
+* two screens — a shell that runs any operation, and a conversation with the agent ([d511f3d](https://github.com/getmilpa/framework/commit/d511f3d2ed79659ddeee5357a86903db4784c248))
+
 ## [0.3.0](https://github.com/getmilpa/framework/compare/v0.2.2...v0.3.0) (2026-07-31)
 
 
