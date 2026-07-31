@@ -172,6 +172,29 @@ are **terminal-only**: whoever can mint a token can mint one with every scope.
 Remove those three lines from `config/boot.php` and the app still runs whole over the terminal and
 MCP — it just cannot expose anything that declares scopes, and the boot says so.
 
+## Hooks
+
+Every operation — from the terminal, the TUI, HTTP or MCP — runs through one seam that announces it:
+
+```php
+$dispatcher->subscribe('operation.executing', function (array $payload): void {
+    $op = $payload['event']->operation;
+    if ($op->mutating && $payload['event']->surface === 'http') {
+        $payload['slot']->stop();                       // deny it
+        // $payload['slot']->shortCircuit($cached);     // …or answer for it
+    }
+});
+
+$dispatcher->subscribe('operation.executed', function (array $payload): void {
+    $e = $payload['event'];   // ->result, ->surface, ->ran(), ->shortCircuited, ->stopped, ->error
+});
+```
+
+`operation.executed` fires on **every** outcome — answered, served from a listener, stopped, thrown.
+An audit trail with holes is worse than none: it teaches you to trust an incomplete list. And the
+event carries the surface it came in through, because the same operation arriving over HTTP and on
+the machine's own terminal does not always deserve the same answer.
+
 ## What is opt-in, and why
 
 The box is deliberately small. Two examples of what it does **not** include:
