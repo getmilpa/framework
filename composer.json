@@ -25,8 +25,8 @@
     "milpa/core": "^0.6",
     "milpa/devtools": "^0.9",
     "milpa/mcp-server": "^0.4",
-    "milpa/plugin": "^0.4",
-    "milpa/runtime": "^0.6",
+    "milpa/plugin": "^0.5",
+    "milpa/runtime": "^0.7",
     "milpa/tool-runtime": "^0.9",
     "nyholm/psr7": "^1.8",
     "nyholm/psr7-server": "^1.1"
