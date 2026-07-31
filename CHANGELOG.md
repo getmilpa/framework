@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/getmilpa/framework/compare/v0.1.2...v0.1.3) (2026-07-31)
+
+
+### Bug Fixes
+
+* this is now the only create-project entry point ([06cb50c](https://github.com/getmilpa/framework/commit/06cb50c018e64ff14692d0f5f30a4c7508014310))
+
 ## [0.1.2](https://github.com/getmilpa/framework/compare/v0.1.1...v0.1.2) (2026-07-31)
 
 
