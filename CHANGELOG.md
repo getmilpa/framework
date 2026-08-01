@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/getmilpa/framework/compare/v0.10.1...v0.10.2) (2026-08-01)
+
+
+### Bug Fixes
+
+* running the agent and remembering sessions are two capabilities ([d015a2f](https://github.com/getmilpa/framework/commit/d015a2fa74d5094a7744d585658088104c638fea))
+
 ## [0.10.1](https://github.com/getmilpa/framework/compare/v0.10.0...v0.10.1) (2026-08-01)
 
 
