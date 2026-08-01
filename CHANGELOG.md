@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1](https://github.com/getmilpa/framework/compare/v0.9.0...v0.9.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* el corte a tiny tambien vale para create-project ([2105935](https://github.com/getmilpa/framework/commit/21059355159b412b44636021671c97dd8c5f5ed1))
+* los opt-in salen tambien de require-dev ([5332748](https://github.com/getmilpa/framework/commit/533274897865e72cb5a01c8d29d563ac02a376c4))
+
 ## [0.9.0](https://github.com/getmilpa/framework/compare/v0.8.0...v0.9.0) (2026-08-01)
 
 
