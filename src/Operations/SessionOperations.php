@@ -21,6 +21,7 @@ use Milpa\Agent\SessionStore;
 use Milpa\Agent\Todo;
 use Milpa\Agent\TodoStatus;
 use Milpa\Auth\AuthContext;
+use App\Support\Capabilities;
 use Milpa\Command\CommandProvider;
 use Milpa\Command\InvocationContext;
 use Milpa\Command\Operation;
@@ -54,6 +55,17 @@ final class SessionOperations implements CommandProvider
      */
     public function operations(): array
     {
+        // LO QUE NO SE PUEDE HACER NO SE OFRECE.
+        //
+        // Este framework es tiny por default y crece por opt-in, así que `milpa/agent` puede no estar
+        // instalado. Anunciar una operación que sólo sabe contestar «esta app no tiene…» es peor que
+        // no anunciarla: quien lee `coa list` —persona o agente— la cuenta como disponible, la llama,
+        // y aprende que el listado miente. `coa capabilities` es donde se ve lo que FALTA, con el
+        // `composer require` que lo enciende.
+        if (!Capabilities::installed('agent')) {
+            return [];
+        }
+
         return [
             new Operation(
                 name: 'agent:sessions',

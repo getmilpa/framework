@@ -25,6 +25,11 @@ declare(strict_types=1);
  * @return list<class-string<\Milpa\Command\CommandProvider>>
  */
 return [
+    // EL CATÁLOGO VA PRIMERO, y no está gateado por nada: es la única operación que una app tiny
+    // siempre tiene. Si dependiera de un paquete, la app más pequeña —la que más necesita que le
+    // enseñen el camino— sería justo la que no lo tendría (ADR-0040).
+    App\Operations\CapabilityOperations::class,
+
     Milpa\DevTools\Operations\DevToolsOperations::class,
 
     // El agente de esta app: `coa agent "..."`. Ve las mismas operaciones que un cliente MCP, y sin

@@ -26,6 +26,7 @@ use Milpa\AiGateway\ToolCallRecorder;
 use Milpa\Agent\AutonomyMode;
 use Milpa\Agent\Compactor;
 use Milpa\Agent\SessionStore;
+use App\Support\Capabilities;
 use Milpa\Command\CommandProvider;
 use Milpa\Command\Operation;
 use Milpa\Console\McpProjector;
@@ -74,6 +75,17 @@ class AgentOperations implements CommandProvider
      */
     public function operations(): array
     {
+        // LO QUE NO SE PUEDE HACER NO SE OFRECE.
+        //
+        // Este framework es tiny por default y crece por opt-in, así que `milpa/agent` puede no estar
+        // instalado. Anunciar una operación que sólo sabe contestar «esta app no tiene…» es peor que
+        // no anunciarla: quien lee `coa list` —persona o agente— la cuenta como disponible, la llama,
+        // y aprende que el listado miente. `coa capabilities` es donde se ve lo que FALTA, con el
+        // `composer require` que lo enciende.
+        if (!Capabilities::installed('agent') || !Capabilities::installed('agent-runs')) {
+            return [];
+        }
+
         return [
             new Operation(
                 name: 'agent',
@@ -544,6 +556,20 @@ class AgentOperations implements CommandProvider
             . "- Marca `todo` con status `done` EN CUANTO termines cada una, no al final.\n"
             . '- Si una sesión ya trae plan y pendientes, sigue ésos en vez de escribir otros: son tuyos, de antes.',
         ];
+
+        // LO QUE ESTA APP TRAE PUESTO, dicho por los paquetes mismos.
+        //
+        // Es la mitad del contrato de capacidades que no son operaciones: un paquete no sólo agrega
+        // herramientas, agrega CONTEXTO. Sin esto, el agente tendría que deducir de la lista de
+        // herramientas qué clase de app opera —si persiste, si sabe quién llama, si puede pausarse— y
+        // deducir es una decisión más, que es lo que llevamos cuatro tandas midiendo que cuesta.
+        //
+        // Y va aquí y no en una constante porque una app tiny y una completa son apps distintas: un
+        // prompt que hablara de tokens en una app sin identidad estaría describiendo otra.
+        $puesto = Capabilities::briefing();
+        if ($puesto !== []) {
+            $partes[] = "Lo que esta app trae puesto:\n- " . implode("\n- ", $puesto);
+        }
 
         $config = $this->container->has(Config::class) ? $this->container->get(Config::class) : null;
 

@@ -42,26 +42,37 @@ $declared = require __DIR__ . '/plugins.php';
 
 $plugins = ActivePlugins::wire($container, $declared, __DIR__ . '/../storage/plugins.json');
 
-// ── Identidad ───────────────────────────────────────────────────────────────────────────────────
+// ── Identidad — OPT-IN ──────────────────────────────────────────────────────────────────────────
 //
-// Tres piezas y ninguna es opcional si quieres servir operaciones protegidas por HTTP:
+// Tres piezas, y ninguna es opcional si quieres servir operaciones protegidas por HTTP:
 //
 //   1. el ALMACÉN de tokens — `milpa/data` con el backend que digas en config/app.php;
 //   2. el VERIFICADOR, que convierte un `Authorization: Bearer …` en un actor con scopes;
 //   3. la POLÍTICA, que decide si ese actor puede correr ESTA operación.
 //
-// Sin ellas la app sigue funcionando entera por terminal y por MCP —que corren en la máquina de
-// quien los invoca— y `config/http.php` no puede exponer nada que declare scopes. Con ellas, sí.
-/** @var array<string, mixed> $configApp */
-$configApp = require __DIR__ . '/app.php';
-/** @var array<string, mixed> $almacen */
-$almacen = \is_array($configApp['storage'] ?? null) ? $configApp['storage'] : ['driver' => 'file', 'path' => __DIR__ . '/../storage/tokens.json'];
+// Pero son opcionales para EXISTIR. Este bloque sólo corre si `milpa/auth` y `milpa/data` están
+// instalados, porque una app recién creada no tiene por qué cargar con una base de datos y un
+// esquema de tokens para saludar por HTTP. Sin ellas la app sigue funcionando entera por terminal y
+// por MCP —que corren en la máquina de quien los invoca— y `config/http.php` no puede exponer nada
+// que declare scopes. Con ellas, sí.
+//
+// Se pregunta por las clases y no por el composer.json porque lo que importa es si el código está,
+// no lo que un archivo diga que debería estar: `composer remove` deja el manifiesto al día y el
+// vendor sin las clases, y es el vendor el que decide si esto arranca.
+//
+// Para encenderlo:  composer require milpa/auth milpa/data     (o `coa capabilities` para verlo)
+if (class_exists(RepositoryFactory::class) && class_exists(AuthOperationHttpPolicy::class)) {
+    /** @var array<string, mixed> $configApp */
+    $configApp = require __DIR__ . '/app.php';
+    /** @var array<string, mixed> $almacen */
+    $almacen = \is_array($configApp['storage'] ?? null) ? $configApp['storage'] : ['driver' => 'file', 'path' => __DIR__ . '/../storage/tokens.json'];
 
-$tokens = RepositoryFactory::fromConfig($almacen, ApiToken::class);
-$container->registerService(TokenVerifier::class . '.repository', $tokens);
-$container->registerService(CredentialVerifier::class, new TokenVerifier($tokens));
+    $tokens = RepositoryFactory::fromConfig($almacen, ApiToken::class);
+    $container->registerService(TokenVerifier::class . '.repository', $tokens);
+    $container->registerService(CredentialVerifier::class, new TokenVerifier($tokens));
 
-$psr17 = new Psr17Factory();
-$container->registerService(OperationHttpPolicy::class, new AuthOperationHttpPolicy($container, $psr17, $psr17));
+    $psr17 = new Psr17Factory();
+    $container->registerService(OperationHttpPolicy::class, new AuthOperationHttpPolicy($container, $psr17, $psr17));
+}
 
 return ['container' => $container, 'plugins' => $plugins];

@@ -16,6 +16,7 @@ namespace App\Operations;
 
 use App\Auth\ApiToken;
 use App\Auth\TokenVerifier;
+use App\Support\Capabilities;
 use Milpa\Command\CommandProvider;
 use Milpa\Command\Operation;
 use Milpa\Data\RepositoryInterface;
@@ -45,6 +46,17 @@ final readonly class TokenOperations implements CommandProvider
      */
     public function operations(): array
     {
+        // LO QUE NO SE PUEDE HACER NO SE OFRECE.
+        //
+        // Este framework es tiny por default y crece por opt-in, así que `milpa/auth` + `milpa/data` puede no estar
+        // instalado. Anunciar una operación que sólo sabe contestar «esta app no tiene…» es peor que
+        // no anunciarla: quien lee `coa list` —persona o agente— la cuenta como disponible, la llama,
+        // y aprende que el listado miente. `coa capabilities` es donde se ve lo que FALTA, con el
+        // `composer require` que lo enciende.
+        if (!Capabilities::installed('identity')) {
+            return [];
+        }
+
         return [
             new Operation(
                 name: 'token.list',

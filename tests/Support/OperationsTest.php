@@ -16,6 +16,7 @@ namespace App\Tests\Support;
 
 use App\Operations\AgentOperations;
 use App\Support\Operations;
+use Milpa\Container\DIContainer;
 use Milpa\Runtime\Kernel;
 use Milpa\ToolRuntime\ToolRegistry;
 use PHPUnit\Framework\TestCase;
@@ -127,5 +128,54 @@ final class OperationsTest extends TestCase
 
         self::assertContains('plugins_list', $herramientas);
         self::assertNotContains('agent', $herramientas, 'un agente que se ofrece a sí mismo es un bucle que nadie pidió');
+    }
+
+    /**
+     * Sin `config/operations.php`, no hay operaciones de paquete — y tampoco hay error.
+     *
+     * Es el estado de una app recién creada que todavía no adopta nada, y la rama que hace posible el
+     * opt-in. Existía y no estaba probada, que es la forma callada de que deje de funcionar.
+     */
+    public function testWithoutTheConfigFileThereAreSimplyNoPackageOperations(): void
+    {
+        $vacia = sys_get_temp_dir() . '/milpa-ops-' . bin2hex(random_bytes(6));
+        mkdir($vacia . '/config', 0o775, true);
+
+        try {
+            self::assertSame([], Operations::declared(new DIContainer(), [], $vacia));
+        } finally {
+            @rmdir($vacia . '/config');
+            @rmdir($vacia);
+        }
+    }
+
+    /**
+     * Una clase declarada que NO está instalada se salta, no truena.
+     *
+     * Es la degradación que hace posible crecer por opt-in: quien escribió la lista afirmó una
+     * intención, y una intención que todavía no se puede cumplir no debería impedir arrancar. Pasó de
+     * verdad cuando `DevToolsOperations` nació después de `milpa/devtools 0.8.0`.
+     */
+    public function testADeclaredClassThatIsNotInstalledIsSkippedAndAnInstalledOneContributes(): void
+    {
+        $raiz = sys_get_temp_dir() . '/milpa-ops-' . bin2hex(random_bytes(6));
+        mkdir($raiz . '/config', 0o775, true);
+        file_put_contents(
+            $raiz . '/config/operations.php',
+            "<?php\n\nreturn ['Milpa\\\\NoExiste\\\\Operaciones', 'App\\\\Operations\\\\CapabilityOperations'];\n",
+        );
+
+        try {
+            $operaciones = Operations::declared(new DIContainer(), [], $raiz);
+
+            // La ausente se salta Y la presente contribuye: sin la segunda mitad, un cero no
+            // distinguiría «se saltó lo que falta» de «no junta nada nunca».
+            self::assertCount(1, $operaciones);
+            self::assertSame('capabilities', $operaciones[0]->name);
+        } finally {
+            @unlink($raiz . '/config/operations.php');
+            @rmdir($raiz . '/config');
+            @rmdir($raiz);
+        }
     }
 }

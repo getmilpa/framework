@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Console;
 
+use App\Support\Capabilities;
 use Milpa\Command\CommandProvider;
 use Milpa\Command\Operation;
 use Milpa\Console\CliProjector;
@@ -107,6 +108,16 @@ final class Application
         // misma app con una capacidad sin proveedor: `plugins:list`, `validate` y `test` caídas, y una
         // línea de error como único dato. La herramienta que explica por qué no arranca no puede
         // necesitar que arranque.
+        // Las dos guardas de abajo dicen lo mismo y a propósito no comparten un helper: cada una
+        // nombra SU capability y SU `composer require`, y un helper genérico las habría vuelto un
+        // «falta algo, mira el catálogo» que obliga a un segundo paso para saber cuál.
+        if ($comando === 'doctor' && !Capabilities::installed('devtools')) {
+            return $this->faltaCapability(
+                '`doctor` vive en las herramientas de desarrollo, y esta app todavía no las tiene.',
+                'composer require milpa/devtools',
+            );
+        }
+
         if ($comando === 'doctor') {
             return $this->doctor();
         }
@@ -121,6 +132,13 @@ final class Application
                 ...$this->tamano(),
                 dispatcher: $this->kernel()->dispatcher(),
             ));
+        }
+
+        if ($comando === 'chat' && !Capabilities::installed('agent')) {
+            return $this->faltaCapability(
+                '`chat` necesita el agente, y esta app todavía no lo tiene.',
+                'composer require milpa/agent milpa/ai-gateway milpa/tool-runtime',
+            );
         }
 
         if ($comando === 'chat') {
@@ -427,15 +445,40 @@ final class Application
         // existe y no se anuncia no la encuentra nadie — y `doctor` es justamente la que hace falta
         // cuando lo demás no corre.
         $this->line('  Además:');
-        $this->line('    doctor           Explica el estado arquitectónico de la app SIN arrancarla');
+        if (Capabilities::installed('devtools')) {
+            $this->line('    doctor           Explica el estado arquitectónico de la app SIN arrancarla');
+        }
         $this->line('    shell            Todas las operaciones, en una pantalla');
-        $this->line('    chat [<sesion>]  El agente, en una sesión que sobrevive al proceso');
+        // `chat` sólo si el agente está instalado. Este framework es tiny por default: anunciar una
+        // pantalla que no puede abrirse enseñaría que la ayuda miente, y `coa capabilities` es donde
+        // se ve lo que falta con el `composer require` que lo enciende.
+        if (Capabilities::installed('agent')) {
+            $this->line('    chat [<sesion>]  El agente, en una sesión que sobrevive al proceso');
+        }
         $this->line('');
 
         $this->line('  Una operación que exige firma se corre con --sign; --json cambia la salida a');
         $this->line('  documento de una línea, para un programa.');
 
         return 0;
+    }
+
+    /**
+     * Lo que falta, cómo se enciende, y dónde está el resto.
+     *
+     * Se dice **al intentar usarlo**, que es el único momento en que a alguien le importa. Un
+     * mensaje que sólo dijera «no existe ese comando» dejaría a quien pregunta —persona o agente—
+     * creyendo que se equivocó de nombre, cuando lo que pasa es que la app todavía no crece hasta ahí.
+     */
+    private function faltaCapability(string $queFalta, string $comando): int
+    {
+        $this->line('  ' . $queFalta);
+        $this->line('');
+        $this->line('    ' . $comando);
+        $this->line('');
+        $this->line('  `coa capabilities` enumera todo lo que esta app puede encender.');
+
+        return 1;
     }
 
     /**

@@ -591,4 +591,32 @@ final class SessionOperationsTest extends TestCase
         self::assertSame(1, $fila['pending'] ?? null, 'una tarjeta sigue abierta');
         self::assertGreaterThan(0, $fila['unexplained'] ?? 0, 'y el trabajo siguio sin ella');
     }
+
+    /**
+     * Con el agente instalado pero sin dónde guardar, las operaciones existen y lo DICEN.
+     *
+     * Son dos ausencias distintas y el sistema no las puede confundir: «el paquete no está» hace que
+     * la operación no se ofrezca (ADR-0040), y «está pero esta app no cableó un almacén» es una app
+     * mal configurada, que sí tiene que aparecer y contestar qué falta. Colapsarlas escondería la
+     * segunda detrás del silencio de la primera.
+     */
+    public function testInstalledButUnwiredIsADifferentAbsenceAndItSaysSo(): void
+    {
+        $proveedor = new SessionOperations(new \Milpa\Container\DIContainer());
+
+        $nombres = array_map(static fn ($o): string => $o->name, $proveedor->operations());
+        self::assertContains('agent:sessions', $nombres, 'el paquete está: la operación se ofrece');
+
+        foreach ($proveedor->operations() as $operacion) {
+            if ($operacion->name === 'agent:sessions') {
+                $handler = $operacion->handler;
+                self::assertIsCallable($handler);
+                /** @var array<string, mixed> $r */
+                $r = $handler([]);
+
+                self::assertFalse($r['ok'] ?? true);
+                self::assertStringContainsString('dónde guardar', (string) ($r['error'] ?? ''));
+            }
+        }
+    }
 }

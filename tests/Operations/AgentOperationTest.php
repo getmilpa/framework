@@ -439,9 +439,15 @@ final class AgentOperationTest extends TestCase
 
         // Y un separador vacío no es una sección: `PluginsManager` intercala cadenas vacías entre
         // plugins, y una que llegara al prompt dejaría un hueco donde el modelo espera contenido.
-        // Las partes se unen con una línea en blanco, así que contarlas cuenta las secciones reales:
-        // las tres de base más la del plugin, y ninguna de las dos vacías que se le pasaron.
-        self::assertCount(4, explode("\n\n", $prompt));
+        //
+        // Se afirma la PROPIEDAD y no un número. La versión anterior contaba cuatro secciones, y se
+        // rompió el día que el prompt ganó una legítima —lo que la app trae puesto, que depende de
+        // qué opt-ins estén instalados—. Un conteo fijo sobre algo que varía con el entorno obliga a
+        // editar la prueba cada vez que el sistema crece bien, y una prueba que se edita por costumbre
+        // deja de vigilar.
+        foreach (explode("\n\n", $prompt) as $seccion) {
+            self::assertNotSame('', trim($seccion), 'ninguna sección puede llegar vacía');
+        }
         self::assertSame(trim($prompt), $prompt, 'sin relleno al final');
     }
 

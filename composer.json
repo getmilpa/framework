@@ -18,15 +18,9 @@
     }
   ],
   "require": {
-    "milpa/agent": "^0.2",
-    "milpa/ai-gateway": "^0.4",
-    "milpa/auth": "^0.3.1",
     "milpa/command": "^0.4",
     "milpa/console": "^0.7",
     "milpa/core": "^0.6.2 || ^0.7",
-    "milpa/data": "^0.2",
-    "milpa/devtools": "^0.9.3",
-    "milpa/mcp-server": "^0.4",
     "milpa/plugin": "^0.7",
     "milpa/runtime": "^0.7.1",
     "milpa/tool-runtime": "^0.9",
@@ -36,6 +30,12 @@
   },
   "require-dev": {
     "friendsofphp/php-cs-fixer": "^3.65",
+    "milpa/agent": "^0.2.1",
+    "milpa/ai-gateway": "^0.4.1",
+    "milpa/auth": "^0.3.3",
+    "milpa/data": "^0.2.1",
+    "milpa/devtools": "^0.9.5",
+    "milpa/mcp-server": "^0.4.1",
     "phpstan/phpstan": "^2.1",
     "phpunit/phpunit": "^11.5"
   },
@@ -54,5 +54,13 @@
   ],
   "config": {
     "sort-packages": true
+  },
+  "suggest": {
+    "milpa/agent": "Sesiones que sobreviven al proceso: plan, pendientes, permisos y `coa chat`",
+    "milpa/ai-gateway": "Que el agente CORRA: un modelo al otro lado de `coa agent`",
+    "milpa/auth": "Identidad: convierte un Bearer en un actor con scopes",
+    "milpa/data": "Persistencia para tokens y entidades, con cuatro backends",
+    "milpa/devtools": "Andamiaje y diagnostico: `coa make`, `coa validate`, `coa doctor`",
+    "milpa/mcp-server": "Las mismas operaciones expuestas a un cliente MCP externo"
   }
 }
