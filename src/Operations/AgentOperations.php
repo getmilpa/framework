@@ -36,6 +36,9 @@ use App\Agent\SessionToolGate;
 use App\Support\Operations;
 use Milpa\Interfaces\Tooling\ToolProviderInterface;
 use Milpa\EventStore\EventStoreInterface;
+use App\Agent\BroadcastingEventStore;
+use App\Agent\MercureBroadcaster;
+use App\Agent\SurfaceBroadcaster;
 use Milpa\EventStore\FileEventStore;
 use Milpa\Runtime\Kernel;
 use Milpa\ToolRuntime\ToolRegistry;
@@ -397,6 +400,22 @@ class AgentOperations implements CommandProvider
             return null;
         }
 
+        // CUANDO HAY SUPERFICIE, EL ALMACÉN LO CONSTRUIMOS NOSOTROS.
+        //
+        // `DIContainer::has()` contesta que sí tanto a lo que alguien declaró como a lo que el
+        // contenedor puede FABRICAR, y `SessionStore` es fabricable en cuanto haya un
+        // `EventStoreInterface` registrado. Preguntando primero por él, el contenedor devolvería una
+        // sesión armada por su cuenta —sin puente—, el agente seguiría escribiendo y el tablero se
+        // quedaría quieto sin que nada fallara. Lo encontró la prueba de cableado, no el diseño.
+        $superficie = $this->broadcaster();
+
+        if ($superficie !== null && $this->container->has(EventStoreInterface::class)) {
+            $eventos = $this->container->get(EventStoreInterface::class);
+            if ($eventos instanceof EventStoreInterface) {
+                return new SessionStore(new BroadcastingEventStore($eventos, $superficie));
+            }
+        }
+
         if ($this->container->has(SessionStore::class)) {
             $declarado = $this->container->get(SessionStore::class);
             if ($declarado instanceof SessionStore) {
@@ -421,7 +440,55 @@ class AgentOperations implements CommandProvider
             return null;
         }
 
-        return new SessionStore(new FileEventStore($directorio . '/agent-sessions.jsonl'));
+        return new SessionStore($this->conPuente(new FileEventStore($directorio . '/agent-sessions.jsonl')));
+    }
+
+    /**
+     * El mismo almacén, empujando a la superficie — si hay alguien a quien empujarle.
+     *
+     * ── POR QUÉ AQUÍ Y NO EN UN «BOOT» APARTE ───────────────────────────────────────────────────
+     *
+     * Porque éste es el ÚNICO lugar donde se decide qué almacén usa una sesión. Un puente montado en
+     * otra parte tendría que adivinar cuál de los tres caminos de arriba se tomó, y el día que no
+     * coincidiera dejaría de empujar sin que nada fallara: el agente seguiría escribiendo, el tablero
+     * se quedaría quieto, y nadie tendría por qué sospechar. Es exactamente la forma del defecto que
+     * este repositorio lleva un mes cazando —lo declarado que nunca aterriza—, y aterrizarlo aquí es
+     * lo que impide que se repita.
+     *
+     * ── DOS FORMAS DE PRENDERLO, Y NINGUNA OBLIGA A INSTALAR NADA ───────────────────────────────
+     *
+     * La app puede registrar su propio {@see SurfaceBroadcaster} —cualquier transporte— o, si ya
+     * tiene un hub Mercure en el contenedor, se envuelve solo. Sin ninguno de los dos, esto devuelve
+     * el almacén intacto: una app sin tablero no paga nada, ni siquiera una dependencia.
+     */
+    private function conPuente(EventStoreInterface $eventos): EventStoreInterface
+    {
+        $superficie = $this->broadcaster();
+
+        return $superficie === null ? $eventos : new BroadcastingEventStore($eventos, $superficie);
+    }
+
+    /** A quién se le empuja, si hay alguien. */
+    private function broadcaster(): ?SurfaceBroadcaster
+    {
+        if (!class_exists(BroadcastingEventStore::class)) {
+            return null;
+        }
+
+        if ($this->container->has(SurfaceBroadcaster::class)) {
+            $declarado = $this->container->get(SurfaceBroadcaster::class);
+            if ($declarado instanceof SurfaceBroadcaster) {
+                return $declarado;
+            }
+        }
+
+        // Sin puerto declarado, sirve el hub que ya esté configurado. Se pregunta por el NOMBRE y no
+        // por la clase para no arrastrar `milpa/mercure` como dependencia de este proyecto.
+        $hub = $this->container->has('Milpa\\Mercure\\MercureService')
+            ? $this->container->get('Milpa\\Mercure\\MercureService')
+            : null;
+
+        return \is_object($hub) && method_exists($hub, 'publish') ? new MercureBroadcaster($hub) : null;
     }
 
     /**
