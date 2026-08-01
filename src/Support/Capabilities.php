@@ -86,12 +86,12 @@ final class Capabilities
     public static function knownOptIns(): array
     {
         return [
-            'milpa/agent' => 'Sesiones que sobreviven al proceso: plan, pendientes y permisos',
-            'milpa/ai-gateway' => 'Que el agente CORRA: un modelo al otro lado',
-            'milpa/auth' => 'Identidad: convierte un Bearer en un actor con scopes',
-            'milpa/data' => 'Persistencia con cuatro backends',
-            'milpa/devtools' => 'Andamiaje y diagnóstico: make, validate, doctor',
-            'milpa/mcp-server' => 'Las operaciones, expuestas a un cliente MCP',
+            'milpa/agent' => 'Sessions that outlive the process: plan, todos and permissions',
+            'milpa/ai-gateway' => 'Let the agent RUN: a model on the other side',
+            'milpa/auth' => 'Identity: turns a Bearer into an actor with scopes',
+            'milpa/data' => 'Persistence with four backends',
+            'milpa/devtools' => 'Scaffolding and diagnosis: make, validate, doctor',
+            'milpa/mcp-server' => 'The operations, exposed to an MCP client',
         ];
     }
 
@@ -221,6 +221,10 @@ final class Capabilities
             $faltantes[] = [
                 'package' => $paquete,
                 'title' => $para,
+                // Lo que desbloquea NO se puede saber hasta instalarlo —lo declara el paquete, y el
+                // paquete no está—, así que va vacío y se llena al llegar. Prometer aquí una lista
+                // sería el catálogo escrito a mano otra vez.
+                'unlocks' => [],
                 // EL COMANDO ARMADO, no descrito. Un agente que tiene que componerlo tiene una
                 // decisión más que tomar, y ya sabemos lo que cuesta cada una que se le agrega.
                 'command' => 'composer require ' . $paquete,
@@ -255,6 +259,112 @@ final class Capabilities
     }
 
     /**
+     * Turn one capability on: resolve it, run its command, and say what it unlocked.
+     *
+     * ── WHY THE RUNNER IS INJECTABLE ────────────────────────────────────────────────────────────
+     *
+     * Because the only honest way to test the failing half is to make it fail, and making `composer`
+     * fail for real means either no network or a broken tree — neither of which a test should arrange.
+     * The seam takes the command and returns `[exit code, output lines]`; production passes nothing
+     * and gets `exec`.
+     *
+     * It is the same seam as `$vendor` in {@see self::declaredBy()}, for the same reason: what a test
+     * cannot arrange, it injects — and what it injects is named, not mocked behind a framework.
+     *
+     * @param null|callable(string): array{0: int, 1: list<string>} $runner
+     *
+     * @return array<string, mixed>
+     */
+    public static function install(
+        string $pedido,
+        ?string $vendor = null,
+        ?callable $runner = null,
+        bool $dryRun = false,
+    ): array {
+        $pedido = trim($pedido);
+        if ($pedido === '') {
+            return ['ok' => false, 'error' => 'missing `capability`: which one'];
+        }
+
+        $estado = self::state($vendor);
+
+        // ALREADY THERE IS NOT AN ERROR. Someone who asks twice is told it is done, not that it
+        // failed — a failure reads as "this cannot be had" and sends them looking for another way.
+        foreach ($estado['installed'] as $puesta) {
+            if ($puesta['package'] === $pedido || $puesta['id'] === $pedido) {
+                return ['ok' => true, 'capability' => $puesta['package'], 'hint' => 'already installed — nothing to do'];
+            }
+        }
+
+        $objetivo = null;
+        foreach ($estado['available'] as $falta) {
+            if ($falta['package'] === $pedido) {
+                $objetivo = $falta;
+            }
+        }
+
+        if ($objetivo === null) {
+            return [
+                'ok' => false,
+                'error' => "unknown capability «{$pedido}»",
+                // THE VALID ANSWERS COME WITH THE REFUSAL. Saying only "unknown" makes the caller run
+                // a second operation to learn what it should have said.
+                'available' => array_map(static fn (array $f): mixed => $f['package'], $estado['available']),
+            ];
+        }
+
+        $comando = (string) $objetivo['command'];
+
+        // DRY-RUN SALE AQUÍ y no en la operación, para que la línea que se enseña sea LA MISMA que se
+        // ejecutaría. Armarla aparte permitiría que el texto dijera una cosa y el código hiciera otra,
+        // y quien autoriza estaría consintiendo la versión escrita.
+        if ($dryRun) {
+            return [
+                'ok' => true,
+                'capability' => $objetivo['package'],
+                'command' => $comando,
+                'dry_run' => true,
+                'hint' => 'nothing ran — call again without `dry_run` to install',
+            ];
+        }
+
+        if ($runner === null) {
+            $raiz = \dirname(__DIR__, 2);
+            $runner = static function (string $cmd) use ($raiz): array {
+                $salida = [];
+                $codigo = 1;
+                exec('cd ' . escapeshellarg($raiz) . ' && ' . $cmd . ' --no-interaction 2>&1', $salida, $codigo);
+
+                return [$codigo, $salida];
+            };
+        }
+
+        [$codigo, $salida] = $runner($comando);
+
+        if ($codigo !== 0) {
+            return [
+                'ok' => false,
+                'capability' => $objetivo['package'],
+                'command' => $comando,
+                // THE REAL OUTPUT, not a summary. Composer refuses for reasons only it knows — a
+                // version conflict, no network, a locked platform — and hiding them turns a fixable
+                // problem into "it did not work".
+                'error' => implode("\n", \array_slice($salida, -12)),
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'capability' => $objetivo['package'],
+            'command' => $comando,
+            // WHAT IT UNLOCKED, said by the package itself — so the caller does not have to run
+            // `capabilities` again to find out what just became possible.
+            'unlocked' => $objetivo['unlocks'] ?? [],
+            'hint' => 'run `coa list` to see the new operations',
+        ];
+    }
+
+    /**
      * La pista, y sólo cuando falta algo.
      *
      * Vive aquí y no dentro de la operación porque así se prueba sobre una lista y no sobre el estado
@@ -267,6 +377,6 @@ final class Capabilities
     {
         return $faltantes === []
             ? null
-            : 'Cada entrada de `available` trae su `command` listo para correr.';
+            : 'Every `available` entry carries its `command`, ready to run.';
     }
 }

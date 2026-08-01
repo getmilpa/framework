@@ -113,7 +113,7 @@ final class Application
         // «falta algo, mira el catálogo» que obliga a un segundo paso para saber cuál.
         if ($comando === 'doctor' && !Capabilities::installed('devtools')) {
             return $this->faltaCapability(
-                '`doctor` vive en las herramientas de desarrollo, y esta app todavía no las tiene.',
+                '`doctor` lives in the dev tools, and this app does not have them yet.',
                 'composer require milpa/devtools',
             );
         }
@@ -136,7 +136,7 @@ final class Application
 
         if ($comando === 'chat' && !Capabilities::installed('agent')) {
             return $this->faltaCapability(
-                '`chat` necesita el agente, y esta app todavía no lo tiene.',
+                '`chat` needs the agent, and this app does not have it yet.',
                 'composer require milpa/agent milpa/ai-gateway milpa/tool-runtime',
             );
         }
@@ -369,7 +369,7 @@ final class Application
     {
         $declarados = $this->root . '/config/plugins.php';
         if (!is_file($declarados)) {
-            $this->line('✗ no hay config/plugins.php — esta app no declara plugins');
+            $this->line('✗ no config/plugins.php — this app declares no plugins');
 
             return 1;
         }
@@ -378,7 +378,7 @@ final class Application
         $clases = require $declarados;
         $reporte = (new AppDoctor())->diagnose($clases);
 
-        $this->line('coa doctor · ' . \count($clases) . ' plugin(s) declarado(s)');
+        $this->line('coa doctor · ' . \count($clases) . ' plugin(s) declared');
         $this->line('');
 
         foreach ($reporte->unreadable as $ilegible) {
@@ -405,17 +405,17 @@ final class Application
         foreach ($reporte->errors as $error) {
             $this->line('');
             $this->line('  ' . (string) $error['code'] . ': ' . (string) $error['message']);
-            $this->line('    por qué: ' . (string) $error['why']);
+            $this->line('    why:   ' . (string) $error['why']);
             foreach ((array) $error['fixes'] as $arreglo) {
-                $this->line('    arregla: ' . (string) $arreglo);
+                $this->line('    fix:   ' . (string) $arreglo);
             }
             foreach ((array) $error['recommendedActions'] as $accion) {
-                $this->line('    acción:  ' . (string) json_encode($accion));
+                $this->line('    action: ' . (string) json_encode($accion));
             }
             $aprende = (array) $error['learn'];
             $academia = $aprende['academy'] ?? null;
             if (\is_array($academia) && \is_string($academia['es'] ?? null)) {
-                $this->line('    aprende: ' . $academia['es']);
+                $this->line('    learn: ' . $academia['es']);
             }
         }
 
@@ -427,7 +427,7 @@ final class Application
 
     private function help(): int
     {
-        $this->line('coa — el runtime de esta app. Cada comando es una operación declarada.');
+        $this->line('coa — the runtime of this app. Every command is a declared operation.');
         $this->line('');
 
         $lee = [];
@@ -437,28 +437,28 @@ final class Application
             $operacion->mutating ? $muta[] = $fila : $lee[] = $fila;
         }
 
-        $this->section('Consultan', $lee);
-        $this->section('Cambian algo', $muta);
+        $this->section('They read', $lee);
+        $this->section('They change something', $muta);
 
         // `doctor`, `shell` y `chat` NO son operaciones y por eso la lista derivada no las trae: se
         // enumeran aquí, que es la única excepción honesta a «la ayuda se deriva». Una capacidad que
         // existe y no se anuncia no la encuentra nadie — y `doctor` es justamente la que hace falta
         // cuando lo demás no corre.
-        $this->line('  Además:');
+        $this->line('  Also:');
         if (Capabilities::installed('devtools')) {
-            $this->line('    doctor           Explica el estado arquitectónico de la app SIN arrancarla');
+            $this->line('    doctor           Explain the architectural state of this app WITHOUT booting it');
         }
-        $this->line('    shell            Todas las operaciones, en una pantalla');
+        $this->line('    shell            Every operation, on one screen');
         // `chat` sólo si el agente está instalado. Este framework es tiny por default: anunciar una
         // pantalla que no puede abrirse enseñaría que la ayuda miente, y `coa capabilities` es donde
         // se ve lo que falta con el `composer require` que lo enciende.
         if (Capabilities::installed('agent')) {
-            $this->line('    chat [<sesion>]  El agente, en una sesión que sobrevive al proceso');
+            $this->line('    chat [<session>] The agent, in a session that outlives the process');
         }
         $this->line('');
 
-        $this->line('  Una operación que exige firma se corre con --sign; --json cambia la salida a');
-        $this->line('  documento de una línea, para un programa.');
+        $this->line('  An operation that demands a signature runs with --sign; --json turns the output');
+        $this->line('  into a one-line document, for a program.');
 
         return 0;
     }
@@ -476,7 +476,7 @@ final class Application
         $this->line('');
         $this->line('    ' . $comando);
         $this->line('');
-        $this->line('  `coa capabilities` enumera todo lo que esta app puede encender.');
+        $this->line('  `coa capabilities` lists everything this app can switch on.');
 
         return 1;
     }

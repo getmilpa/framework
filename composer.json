@@ -50,11 +50,11 @@
     "sort-packages": true
   },
   "suggest": {
-    "milpa/agent": "Sesiones que sobreviven al proceso: plan, pendientes, permisos y `coa chat`",
-    "milpa/ai-gateway": "Que el agente CORRA: un modelo al otro lado de `coa agent`",
-    "milpa/auth": "Identidad: convierte un Bearer en un actor con scopes",
-    "milpa/data": "Persistencia para tokens y entidades, con cuatro backends",
-    "milpa/devtools": "Andamiaje y diagnostico: `coa make`, `coa validate`, `coa doctor`",
-    "milpa/mcp-server": "Las mismas operaciones expuestas a un cliente MCP externo"
+    "milpa/agent": "Sessions that outlive the process: plan, todos, permissions and `coa chat`",
+    "milpa/ai-gateway": "Let the agent RUN: a model on the other side of `coa agent`",
+    "milpa/auth": "Identity: turns a Bearer into an actor with scopes",
+    "milpa/data": "Persistence for tokens and entities, with four backends",
+    "milpa/devtools": "Scaffolding and diagnosis: `coa make`, `coa validate`, `coa doctor`",
+    "milpa/mcp-server": "The same operations exposed to an external MCP client"
   }
 }

@@ -170,8 +170,11 @@ final class OperationsTest extends TestCase
 
             // La ausente se salta Y la presente contribuye: sin la segunda mitad, un cero no
             // distinguiría «se saltó lo que falta» de «no junta nada nunca».
-            self::assertCount(1, $operaciones);
-            self::assertSame('capabilities', $operaciones[0]->name);
+            // Dos: el catalogo y la que instala. Se afirma por NOMBRE y no por posicion — contar
+            // posiciones convierte agregar una operacion en romper una prueba que no la vigilaba.
+            $nombres = array_map(static fn ($o): string => $o->name, $operaciones);
+            self::assertContains('capabilities', $nombres);
+            self::assertContains('capabilities:enable', $nombres);
         } finally {
             @unlink($raiz . '/config/operations.php');
             @rmdir($raiz . '/config');

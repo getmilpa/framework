@@ -89,7 +89,7 @@ class AgentOperations implements CommandProvider
         return [
             new Operation(
                 name: 'agent',
-                description: 'Le pide al agente que haga algo usando las operaciones de esta app',
+                description: 'Ask the agent to do something using the operations of this app',
                 handler: fn (array $input): array => $this->run($input),
                 inputSchema: [
                     'type' => 'object',

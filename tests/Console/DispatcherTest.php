@@ -46,7 +46,7 @@ final class DispatcherTest extends TestCase
         $r = $this->correr();
 
         self::assertSame(0, $r['codigo']);
-        self::assertStringContainsString('Cada comando es una operación declarada', $r['texto']);
+        self::assertStringContainsString('Every command is a declared operation', $r['texto']);
         self::assertStringContainsString('plugins:list', $r['texto']);
     }
 
@@ -145,11 +145,11 @@ final class DispatcherTest extends TestCase
     {
         $texto = $this->correr()['texto'];
 
-        self::assertStringContainsString('Consultan:', $texto);
-        self::assertStringContainsString('Cambian algo:', $texto);
+        self::assertStringContainsString('They read:', $texto);
+        self::assertStringContainsString('They change something:', $texto);
         self::assertLessThan(
             (int) strpos($texto, 'plugins:enable'),
-            (int) strpos($texto, 'Cambian algo:'),
+            (int) strpos($texto, 'They change something:'),
             'habilitar un plugin va del lado que cambia',
         );
     }

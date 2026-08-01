@@ -38,7 +38,7 @@ final class ApplicationTest extends TestCase
         $r = $this->coa();
 
         self::assertSame(0, $r['codigo'], $r['texto']);
-        self::assertStringContainsString('Cada comando es una operación declarada', $r['texto']);
+        self::assertStringContainsString('Every command is a declared operation', $r['texto']);
         // De las dos fuentes: `plugins:*` los declara un plugin arrancado, `validate` y `make` los
         // publica un paquete que esta app adopta.
         self::assertStringContainsString('plugins:list', $r['texto']);
@@ -51,11 +51,11 @@ final class ApplicationTest extends TestCase
     {
         $texto = $this->coa()['texto'];
 
-        self::assertStringContainsString('Consultan:', $texto);
-        self::assertStringContainsString('Cambian algo:', $texto);
+        self::assertStringContainsString('They read:', $texto);
+        self::assertStringContainsString('They change something:', $texto);
         self::assertLessThan(
             strpos($texto, 'plugins:enable'),
-            (int) strpos($texto, 'Cambian algo:'),
+            (int) strpos($texto, 'They change something:'),
             'habilitar un plugin cambia algo y va del lado que cambia',
         );
     }
@@ -175,7 +175,7 @@ final class ApplicationTest extends TestCase
         $r = $this->doctorEnProceso();
 
         self::assertSame(0, $r['codigo'], $r['texto']);
-        self::assertStringContainsString('plugin(s) declarado(s)', $r['texto']);
+        self::assertStringContainsString('plugin(s) declared', $r['texto']);
         self::assertStringContainsString('HelloPlugin', $r['texto']);
         self::assertStringContainsString('provee:', $r['texto']);
         self::assertStringContainsString('pide:', $r['texto']);

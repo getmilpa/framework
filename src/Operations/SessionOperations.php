@@ -69,14 +69,14 @@ final class SessionOperations implements CommandProvider
         return [
             new Operation(
                 name: 'agent:sessions',
-                description: 'Las sesiones de agente de esta app y en qué van',
+                description: 'The agent sessions of this app, and where each one stands',
                 handler: fn (array $input): array => $this->listar(),
                 inputSchema: ['type' => 'object', 'properties' => []],
                 mutating: false,
             ),
             new Operation(
                 name: 'agent:show',
-                description: 'Todo lo que se sabe de una sesión: objetivo, plan, pendientes, permisos y en qué quedó',
+                description: 'Everything known about one session: goal, plan, todos, permissions and how it ended',
                 handler: fn (array $input): array => $this->mostrar($input),
                 inputSchema: [
                     'type' => 'object',
@@ -89,7 +89,7 @@ final class SessionOperations implements CommandProvider
             ),
             new Operation(
                 name: 'agent:mode',
-                description: 'Cambia hasta dónde puede llegar una sesión sin preguntar',
+                description: 'Change how far a session may go without asking',
                 handler: fn (array $input): array => $this->cambiarModo($input),
                 inputSchema: [
                     'type' => 'object',
@@ -112,7 +112,7 @@ final class SessionOperations implements CommandProvider
             ),
             new Operation(
                 name: 'agent:timeline',
-                description: 'Lo que pasó en una sesión, traducido para pintarlo: tarjetas, plan y cierre',
+                description: 'What happened in a session, translated for a surface to paint: cards, plan and closing',
                 handler: fn (array $input): array => $this->linea($input),
                 inputSchema: [
                     'type' => 'object',
@@ -130,7 +130,7 @@ final class SessionOperations implements CommandProvider
             ),
             new Operation(
                 name: 'agent:answer',
-                description: 'Contesta la pregunta que dejó pausada una sesión, y la reanuda',
+                description: 'Answer the question that paused a session, and resume it',
                 // EL CONTEXTO VIAJA POR EL MISMO CAMINO QUE LA INVOCACIÓN, no por el contenedor.
                 // Un handler que lo lee del ambiente puede olvidarse de leerlo y seguir funcionando,
                 // y el contenedor puede conservar el actor de la petición anterior.

@@ -155,6 +155,80 @@ final class CapabilitiesTest extends TestCase
         }
     }
 
+    /** @return callable */
+    private function enable(): callable
+    {
+        foreach ((new CapabilityOperations())->operations() as $o) {
+            if ($o->name === 'capabilities:enable') {
+                $h = $o->handler;
+                self::assertIsCallable($h);
+
+                return $h;
+            }
+        }
+        self::fail('capabilities:enable no se ofrece');
+    }
+
+    /**
+     * `dry_run` ensena el comando EXACTO y no corre nada.
+     *
+     * Es lo que hace que el consentimiento se de sobre algo legible en vez de sobre un nombre: quien
+     * autoriza ve la misma linea que se va a ejecutar.
+     */
+    public function testDryRunShowsTheExactCommandAndRunsNothing(): void
+    {
+        /** @var array<string, mixed> $r */
+        $r = ($this->enable())(['capability' => 'milpa/agent', 'dry_run' => true]);
+
+        // En este monorepo agent ESTA puesto, asi que la respuesta correcta es «ya esta» y no un
+        // comando: pedir dos veces no es un error, y decir que fallo mandaria a buscar otra via.
+        self::assertTrue($r['ok'] ?? false);
+        self::assertStringContainsString('already installed', (string) ($r['hint'] ?? ''));
+
+        // Y sobre un vendor donde SI falta, ensena el comando exacto y no corre nada.
+        $corrio = false;
+        $seco = Capabilities::install(
+            'milpa/agent',
+            $this->vendorCon([]),
+            static function (string $c) use (&$corrio): array {
+                $corrio = true;
+                return [0, []];
+            },
+            dryRun: true,
+        );
+
+        self::assertTrue($seco['ok']);
+        self::assertSame('composer require milpa/agent', $seco['command']);
+        self::assertTrue($seco['dry_run']);
+        self::assertFalse($corrio, 'dry-run no corre nada');
+    }
+
+    /** Sin nombre, no adivina cual. */
+    public function testWithoutANameItDoesNotGuess(): void
+    {
+        /** @var array<string, mixed> $r */
+        $r = ($this->enable())([]);
+
+        self::assertFalse($r['ok'] ?? true);
+        self::assertStringContainsString('capability', (string) ($r['error'] ?? ''));
+    }
+
+    /**
+     * Un nombre que no existe se rechaza CON las respuestas validas.
+     *
+     * Decir solo «desconocida» obliga a correr una segunda operacion para saber que se debio decir —
+     * un paso mas para quien ya se equivoco una vez.
+     */
+    public function testAnUnknownNameIsRefusedWithTheValidAnswers(): void
+    {
+        /** @var array<string, mixed> $r */
+        $r = ($this->enable())(['capability' => 'milpa/teleport']);
+
+        self::assertFalse($r['ok'] ?? true);
+        self::assertStringContainsString('milpa/teleport', (string) ($r['error'] ?? ''));
+        self::assertIsArray($r['available'] ?? null);
+    }
+
     /** La pista aparece cuando falta algo, y calla cuando no. */
     public function testTheHintOnlyShowsUpWhenSomethingIsMissing(): void
     {
@@ -171,13 +245,23 @@ final class CapabilitiesTest extends TestCase
     public function testTheOperationIsOfferedOnEverySurfaceAndChangesNothing(): void
     {
         $operaciones = (new CapabilityOperations())->operations();
-
-        self::assertCount(1, $operaciones);
-        self::assertSame('capabilities', $operaciones[0]->name);
-        self::assertFalse($operaciones[0]->mutating);
-        foreach (['cli', 'tui', 'mcp', 'http'] as $superficie) {
-            self::assertContains($superficie, $operaciones[0]->surfaces ?? []);
+        $porNombre = [];
+        foreach ($operaciones as $o) {
+            $porNombre[$o->name] = $o;
         }
+
+        self::assertArrayHasKey('capabilities', $porNombre);
+        self::assertFalse($porNombre['capabilities']->mutating);
+        foreach (['cli', 'tui', 'mcp', 'http'] as $superficie) {
+            self::assertContains($superficie, $porNombre['capabilities']->surfaces ?? []);
+        }
+
+        // Y la que INSTALA muta, y no se ofrece por HTTP: instalar un paquete corre codigo de la red
+        // sobre la maquina, y un scope no sostiene eso — una superficie alcanzable desde cualquier
+        // lado convierte un token filtrado en codigo arbitrario en el host.
+        self::assertTrue($porNombre['capabilities:enable']->mutating);
+        self::assertNotContains('http', $porNombre['capabilities:enable']->surfaces ?? []);
+        self::assertContains('cli', $porNombre['capabilities:enable']->surfaces ?? []);
     }
 
     /**
@@ -219,5 +303,75 @@ final class CapabilitiesTest extends TestCase
         self::assertTrue($r['ok'] ?? false);
         self::assertNotEmpty($r['installed'] ?? []);
         self::assertArrayHasKey('agent.sessions', $r['ports'] ?? []);
+    }
+
+    /**
+     * Instalar de verdad: el comando corre y la respuesta dice que se desbloqueo.
+     *
+     * El runner inyectado es la unica forma honesta de probar esto sin instalar nada — y sin el, la
+     * mitad que importa de `capabilities:enable` no la ejercitaria ninguna prueba.
+     */
+    public function testInstallingRunsTheCommandAndSaysWhatItUnlocked(): void
+    {
+        $v = $this->vendorCon([]);   // nada puesto: milpa/agent esta disponible
+        $corrio = null;
+
+        $r = Capabilities::install('milpa/agent', $v, static function (string $cmd) use (&$corrio): array {
+            $corrio = $cmd;
+
+            return [0, ['ok']];
+        });
+
+        self::assertTrue($r['ok']);
+        self::assertSame('composer require milpa/agent', $corrio);
+        self::assertSame('composer require milpa/agent', $r['command']);
+    }
+
+    /**
+     * Y si composer se niega, se devuelve LO QUE DIJO.
+     *
+     * Un resumen convertiria un problema con arreglo —un conflicto de version, sin red— en «no
+     * funciono», que es donde se acaban las opciones de quien lo lee.
+     */
+    public function testWhenComposerRefusesItsOwnWordsComeBack(): void
+    {
+        $r = Capabilities::install('milpa/agent', $this->vendorCon([]), static fn (string $cmd): array => [
+            1,
+            ['Your requirements could not be resolved', 'Problem 1'],
+        ]);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('could not be resolved', (string) $r['error']);
+    }
+
+    /** Pedir algo ya puesto no es un error: es «ya esta». */
+    public function testAskingForSomethingAlreadyInstalledIsNotAnError(): void
+    {
+        $v = $this->vendorCon([$this->paquete('milpa/agent', 'agent', 'agent.sessions')]);
+
+        $r = Capabilities::install('milpa/agent', $v, static fn (string $c): array => [0, []]);
+
+        self::assertTrue($r['ok']);
+        self::assertStringContainsString('already installed', (string) $r['hint']);
+    }
+
+    /** Y por su id tambien, no solo por el nombre del paquete. */
+    public function testItAlsoAnswersByCapabilityId(): void
+    {
+        $v = $this->vendorCon([$this->paquete('milpa/agent', 'agent', 'agent.sessions')]);
+
+        self::assertTrue(Capabilities::install('agent', $v, static fn (string $c): array => [0, []])['ok']);
+    }
+
+    /** Sin nombre no adivina, y un nombre desconocido vuelve con las respuestas validas. */
+    public function testItRefusesAnEmptyOrUnknownNameUsefully(): void
+    {
+        $v = $this->vendorCon([]);
+
+        self::assertFalse(Capabilities::install('  ', $v)['ok']);
+
+        $r = Capabilities::install('milpa/teleport', $v);
+        self::assertFalse($r['ok']);
+        self::assertContains('milpa/agent', $r['available']);
     }
 }

@@ -60,7 +60,7 @@ final readonly class TokenOperations implements CommandProvider
         return [
             new Operation(
                 name: 'token.list',
-                description: 'Los tokens de API de esta app: quién es cada uno y qué puede — nunca el secreto',
+                description: 'The API tokens of this app: who each one is and what it can do — never the secret',
                 handler: fn (array $input): array => $this->list($input),
                 inputSchema: ['type' => 'object', 'properties' => []],
                 mutating: false,
@@ -70,7 +70,7 @@ final readonly class TokenOperations implements CommandProvider
             ),
             new Operation(
                 name: 'token.new',
-                description: 'Acuña un token para un actor con los scopes que le nombres; lo imprime UNA vez',
+                description: 'Mint a token for an actor with the scopes you name; it is printed ONCE',
                 handler: fn (array $input): array => $this->create($input),
                 inputSchema: [
                     'type' => 'object',
@@ -87,7 +87,7 @@ final readonly class TokenOperations implements CommandProvider
             ),
             new Operation(
                 name: 'token.revoke',
-                description: 'Revoca un token por su id; deja de servir en la siguiente petición',
+                description: 'Revoke a token by its id; it stops working on the next request',
                 handler: fn (array $input): array => $this->revoke($input),
                 inputSchema: [
                     'type' => 'object',
