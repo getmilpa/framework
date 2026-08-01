@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.0](https://github.com/getmilpa/framework/compare/v0.8.0...v0.9.0) (2026-08-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* tiny por default — seis dependencias en vez de doce
+
+### Features
+
+* tiny por default — seis dependencias en vez de doce ([a67df97](https://github.com/getmilpa/framework/commit/a67df9718dde17a25bbf3d92ba599818490453ae))
+
 ## [0.8.0](https://github.com/getmilpa/framework/compare/v0.7.0...v0.8.0) (2026-08-01)
 
 
