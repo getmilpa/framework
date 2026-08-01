@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/getmilpa/framework/compare/v0.7.0...v0.8.0) (2026-08-01)
+
+
+### Features
+
+* el stream de sesion llega en vivo a la superficie ([256effe](https://github.com/getmilpa/framework/commit/256effe21497b5afd87fe4a0b06ffa64f901a0e3))
+
 ## [0.7.0](https://github.com/getmilpa/framework/compare/v0.6.0...v0.7.0) (2026-08-01)
 
 
