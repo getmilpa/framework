@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/getmilpa/framework/compare/v0.6.0...v0.7.0) (2026-08-01)
+
+
+### Features
+
+* agent:answer se abre por HTTP, y la respuesta sabe quien la dio ([a18371a](https://github.com/getmilpa/framework/commit/a18371a6c5ccaaa78a85579f50729a6eba5274b9))
+
 ## [0.6.0](https://github.com/getmilpa/framework/compare/v0.5.1...v0.6.0) (2026-08-01)
 
 
