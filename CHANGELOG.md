@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/getmilpa/framework/compare/v0.9.1...v0.10.0) (2026-08-01)
+
+
+### Features
+
+* capabilities:enable — one step instead of three, and English at runtime ([c5bc355](https://github.com/getmilpa/framework/commit/c5bc3552441be3e2fa35fddb201d9b0ef5516a12))
+
 ## [0.9.1](https://github.com/getmilpa/framework/compare/v0.9.0...v0.9.1) (2026-08-01)
 
 
