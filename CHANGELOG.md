@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/getmilpa/framework/compare/v0.5.1...v0.6.0) (2026-08-01)
+
+
+### Features
+
+* la superficie de agente entra al framework ([f1e2ff1](https://github.com/getmilpa/framework/commit/f1e2ff10ed8d81eb63ea571e0d907e634bf3b0d1))
+
+
+### Bug Fixes
+
+* **deps:** el pin de milpa/core deja de ser una jaula de un minor ([852ee49](https://github.com/getmilpa/framework/commit/852ee493d94dc93b0740f9b34245e3a0391fa30b))
+
 ## [0.5.1](https://github.com/getmilpa/framework/compare/v0.5.0...v0.5.1) (2026-07-31)
 
 
