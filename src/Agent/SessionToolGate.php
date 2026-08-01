@@ -136,12 +136,18 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
             return;
         }
 
+        // SI LA LLAMADA MUTABA, lo sabe esta compuerta: tiene la operación delante. El stream no lo
+        // guardaba, así que no distinguía mirar de mover — y sin esa distinción no se puede verificar
+        // nada sobre las mutaciones, porque como mutaciones son invisibles.
+        $operacion = $this->operationFor($tool);
+
         $this->sessions->recordToolCall(
             $this->session->id,
             $tool,
             $arguments,
             mb_substr($result, 0, self::MAX_RESULT),
             $ok,
+            $operacion instanceof Operation && $operacion->mutating,
         );
     }
 

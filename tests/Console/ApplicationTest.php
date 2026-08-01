@@ -270,4 +270,27 @@ final class ApplicationTest extends TestCase
         }
         @rmdir($ruta);
     }
+
+    /**
+     * `/sessions` lista y `/sessions <id>` cambia — sin gastar una vuelta del modelo.
+     *
+     * Cambiar de sesión no es una pregunta: es cambiar el sujeto de la conversación. Mandarlo al
+     * agente gastaría una llamada al proveedor para que conteste sobre algo que el sistema ya sabe, y
+     * lo contestaría interpretando en vez de haciendo.
+     */
+    public function testSlashSessionsListsAndSwitchesWithoutAskingTheModel(): void
+    {
+        $app = new Application(\dirname(__DIR__, 2));
+        $metodo = new \ReflectionMethod($app, 'preguntarAlAgente');
+
+        $listado = $metodo->invoke($app, '/sessions');
+
+        self::assertTrue($listado['ok']);
+        self::assertIsString($listado['answer'] ?? null);
+
+        $inexistente = $metodo->invoke($app, '/sessions no-existe-esta');
+
+        self::assertFalse($inexistente['ok'], 'no abre una sesión vacía con ese nombre');
+        self::assertStringContainsString('no existe la sesión', (string) $inexistente['error']);
+    }
 }

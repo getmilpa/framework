@@ -9,6 +9,8 @@ use Milpa\Agent\AutonomyMode;
 use Milpa\Agent\PendingQuestion;
 use Milpa\Agent\SessionStore;
 use Milpa\Agent\Todo;
+use Milpa\Agent\TodoStatus;
+use Milpa\Command\InvocationContext;
 use Milpa\Command\Operation;
 use Milpa\Container\DIContainer;
 use Milpa\EventStore\InMemoryEventStore;
@@ -240,7 +242,13 @@ final class SessionOperationsTest extends TestCase
         $contestar = $this->operacion('agent:answer');
         self::assertTrue($contestar->mutating);
         self::assertFalse($contestar->requiresConfirmation);
-        self::assertSame(['cli', 'tui', 'mcp'], $contestar->surfaces);
+
+        // POR HTTP TAMBIÉN, y lo que lo hace seguro no es el canal sino las tres piezas juntas: el
+        // scope exige un actor autenticado, el `InvocationContext` lo trae hasta la operación, y la
+        // operación se niega si no llega. Quitar cualquiera de las tres convierte un permiso
+        // auditable en uno a nombre del proceso del servidor.
+        self::assertSame(['cli', 'tui', 'mcp', 'http'], $contestar->surfaces);
+        self::assertSame(['agent:answer'], $contestar->scopes, 'la web exige actor, no basta con estar');
     }
 
     /** `agent:mode` cambia la autonomía y dice desde dónde — un cambio sin origen no se puede revisar. */
@@ -377,5 +385,210 @@ final class SessionOperationsTest extends TestCase
             self::assertFalse($r['ok'], $nombre);
             self::assertStringContainsString('falta `session`', (string) $r['error'], $nombre);
         }
+    }
+
+    /**
+     * `agent:timeline` da la MISMA respuesta a las tres superficies, y con cursor.
+     *
+     * Que la terminal, el navegador y el agente reciban veredictos distintos del mismo hecho es un
+     * falsificador que este repositorio ya vio dispararse hoy: `ci-check` y la CI publicada
+     * difirieron tres veces. La defensa es que haya un solo camino, no tres cuidadosos.
+     */
+    public function testTheTimelineIsTheSameAnswerForEverySurfaceAndCarriesItsCursor(): void
+    {
+        $almacen = $this->almacen();
+        $almacen->start('s1', 'x');
+        $almacen->setTodo('s1', new Todo('t1', 'mirar', TodoStatus::Pending));
+        $almacen->setTodo('s1', new Todo('t1', 'mirar', TodoStatus::Done));
+
+        $todo = $this->llamar('agent:timeline', ['session' => 's1']);
+
+        self::assertTrue($todo['ok']);
+        self::assertCount(2, $todo['events'], 'abrir no pinta; los dos movimientos sí');
+        self::assertSame('pending', $todo['events'][1]['card']['from'], 'el movimiento viene leído');
+
+        // Y con el cursor que devolvió, no llega nada nuevo: ponerse al día y recibir lo siguiente
+        // son el mismo camino.
+        $nada = $this->llamar('agent:timeline', ['session' => 's1', 'since' => $todo['since']]);
+
+        self::assertSame([], $nada['events']);
+        self::assertSame($todo['since'], $nada['since'], 'el cursor no retrocede');
+    }
+
+    /** Una sesión que no existe se dice, en vez de devolver una línea vacía que parece calma. */
+    public function testAskingTheTimelineOfAnUnknownSessionSaysSo(): void
+    {
+        $r = $this->llamar('agent:timeline', ['session' => 'no-existe']);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('no existe la sesión', (string) $r['error']);
+    }
+
+    /**
+     * Un canal que promete identidad y no la trae: se NIEGA, no degrada.
+     *
+     * Es el falsificador principal de esta rebanada: «HTTP autorizado, pero el evento registra
+     * www-data». Escribir el proceso técnico donde debía ir la persona produce un registro que se lee
+     * como auditoría y no lo es, y eso es peor que no tener la superficie.
+     */
+    public function testAChannelThatPromisesIdentityIsRefusedWhenItDoesNotBringOne(): void
+    {
+        $almacen = $this->almacen();
+        $almacen->start('s1', 'x');
+        $almacen->ask('s1', new PendingQuestion('perm:make', '¿?', ['sí', 'no']));
+
+        $sinActor = new InvocationContext(actor: null, verified: false, channel: 'web', executor: 'www-data@host');
+
+        $r = null;
+        foreach ($this->proveedor()->operations() as $op) {
+            if ($op->name === 'agent:answer') {
+                $r = ($op->handler)(['session' => 's1', 'answer' => 'sí'], $sinActor);
+            }
+        }
+
+        self::assertFalse($r['ok'] ?? true);
+        self::assertStringContainsString('actor verificado', (string) ($r['error'] ?? ''));
+        self::assertNotNull($almacen->load('s1')?->question, 'y la pregunta sigue abierta');
+    }
+
+    /**
+     * Con actor verificado, el evento conserva EXACTAMENTE ese principal — y el ejecutor al lado.
+     *
+     * Política y auditoría tienen que registrar el mismo principal: volver a derivarlo aquí sería la
+     * forma de que difieran. Y el ejecutor acompaña, nunca sustituye.
+     */
+    public function testAVerifiedActorIsRecordedExactlyAndTheExecutorGoesBesideIt(): void
+    {
+        $almacen = $this->almacen();
+        $almacen->start('s1', 'x');
+        $almacen->ask('s1', new PendingQuestion('perm:make', '¿?', ['sí', 'no']));
+
+        $ctx = InvocationContext::web('actor:member:42', 'dec-7', executor: 'www-data@host');
+
+        foreach ($this->proveedor()->operations() as $op) {
+            if ($op->name === 'agent:answer') {
+                ($op->handler)(['session' => 's1', 'answer' => 'sí'], $ctx);
+            }
+        }
+
+        $decision = $almacen->load('s1')?->decisions[0] ?? [];
+
+        self::assertSame('actor:member:42', $decision['by']?->id);
+        self::assertTrue($decision['by']?->verified);
+        self::assertSame('www-data@host', $decision['executor'], 'el proceso acompaña');
+    }
+
+    /** La terminal sigue siendo el caso honesto: sin actor, y el registro lo dice. */
+    public function testTheTerminalStillWorksAndSaysItIsUnverified(): void
+    {
+        $almacen = $this->almacen();
+        $almacen->start('s1', 'x');
+        $almacen->ask('s1', new PendingQuestion('perm:make', '¿?', ['sí', 'no']));
+
+        foreach ($this->proveedor()->operations() as $op) {
+            if ($op->name === 'agent:answer') {
+                ($op->handler)(['session' => 's1', 'answer' => 'sí'], InvocationContext::cli('rod@laptop'));
+            }
+        }
+
+        $decision = $almacen->load('s1')?->decisions[0] ?? [];
+
+        self::assertStringStartsWith('cli:', (string) $decision['by']?->id);
+        self::assertFalse($decision['by']?->verified);
+        self::assertSame('rod@laptop', $decision['executor']);
+    }
+
+    /**
+     * La linea de tiempo devuelve el cursor, y contra una sesion que no existe se niega por su nombre.
+     *
+     * El cursor es lo que permite que una superficie que llega tarde se ponga al dia y siga leyendo
+     * desde donde se quedo; sin el, tendria que pedir el stream entero cada vez o inventarse un
+     * indice propio, que es la forma de que dos lectores cuenten historias distintas.
+     */
+    public function testTheTimelineReturnsACursorAndRefusesAnUnknownSessionByName(): void
+    {
+        $almacen = $this->almacen();
+        $almacen->start('s1', 'x');
+        $almacen->setPlan('s1', 'plan uno');
+
+        $r = $this->llamar('agent:timeline', ['session' => 's1']);
+
+        self::assertTrue($r['ok'] ?? false);
+        self::assertGreaterThan(0, $r['since'] ?? 0, 'el cursor dice desde donde seguir');
+        self::assertNotEmpty($r['events'] ?? []);
+
+        // Y leyendo DESDE ese cursor no vuelve a entregar lo mismo.
+        $siguiente = $this->llamar('agent:timeline', ['session' => 's1', 'since' => $r['since']]);
+        self::assertSame([], $siguiente['events'] ?? [null]);
+
+        $inexistente = $this->llamar('agent:timeline', ['session' => 'no-existe']);
+        self::assertFalse($inexistente['ok'] ?? true);
+        self::assertStringContainsString('no-existe', (string) ($inexistente['error'] ?? ''));
+    }
+
+    /**
+     * Sin `session`, ninguna de estas operaciones adivina cual.
+     *
+     * Elegir «la ultima» por comodidad seria contestar en una sesion que quien pregunta no nombro —y
+     * `agent:answer` escribe—, asi que la falta se dice y no se rellena.
+     */
+    public function testWithoutASessionNothingGuessesWhichOne(): void
+    {
+        foreach (['agent:timeline', 'agent:mode', 'agent:answer'] as $nombre) {
+            $r = $this->llamar($nombre, []);
+            self::assertFalse($r['ok'] ?? true, $nombre);
+            self::assertStringContainsString('session', (string) ($r['error'] ?? ''), $nombre);
+        }
+    }
+
+    /** Un modo que no existe se rechaza diciendo cuales SI existen. */
+    public function testAnUnknownModeIsRefusedWithTheListOfRealOnes(): void
+    {
+        $this->almacen()->start('s1', 'x');
+
+        $r = $this->llamar('agent:mode', ['session' => 's1', 'mode' => 'turbo']);
+
+        self::assertFalse($r['ok'] ?? true);
+        foreach (AutonomyMode::cases() as $modo) {
+            self::assertStringContainsString($modo->value, (string) ($r['error'] ?? ''));
+        }
+    }
+
+    /** Cambiar el modo de una sesion que no existe se niega antes de escribir nada. */
+    public function testChangingTheModeOfAnUnknownSessionRefusesBeforeWriting(): void
+    {
+        $r = $this->llamar('agent:mode', ['session' => 'fantasma', 'mode' => AutonomyMode::Auto->value]);
+
+        self::assertFalse($r['ok'] ?? true);
+        self::assertStringContainsString('fantasma', (string) ($r['error'] ?? ''));
+    }
+
+    /**
+     * El trabajo sin explicar cuenta cuanto SIGUIO pasando con una tarjeta abierta.
+     *
+     * No dice que algo este mal: dice cuanto no se explico. Cero es una sesion limpia, y una sesion
+     * donde nada ocurrio mientras algo quedaba abierto tambien vale cero — que es la diferencia entre
+     * medir silencio y acusar abandono.
+     */
+    public function testUnexplainedWorkCountsWhatKeptHappeningWithACardLeftOpen(): void
+    {
+        $almacen = $this->almacen();
+        $almacen->start('s1', 'x');
+        $almacen->setTodo('s1', new Todo('t1', 'algo', TodoStatus::InProgress));
+        // Y una ya terminada al lado: lo que cuenta es lo abierto, no cuantas tarjetas hay.
+        $almacen->setTodo('s1', new Todo('t2', 'lo otro', TodoStatus::Done));
+        $almacen->recordToolCall('s1', 'edit', ['path' => 'a.php'], 'ok', true, true);
+        $almacen->recordToolCall('s1', 'edit', ['path' => 'b.php'], 'ok', true, true);
+
+        $fila = null;
+        foreach ($this->llamar('agent:sessions')['sessions'] ?? [] as $s) {
+            if (($s['session'] ?? null) === 's1') {
+                $fila = $s;
+            }
+        }
+
+        self::assertNotNull($fila);
+        self::assertSame(1, $fila['pending'] ?? null, 'una tarjeta sigue abierta');
+        self::assertGreaterThan(0, $fila['unexplained'] ?? 0, 'y el trabajo siguio sin ella');
     }
 }

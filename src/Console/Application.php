@@ -203,11 +203,79 @@ final class Application
      */
     private function preguntarAlAgente(string $prompt): array
     {
+        // `/sessions` y `/sessions <id>` SE ATIENDEN AQUÍ, antes de llegar al agente.
+        //
+        // Cambiar de sesión no es una pregunta: es cambiar el sujeto de la conversación. Mandarlo al
+        // modelo gastaría una vuelta y una llamada al proveedor para que conteste sobre algo que el
+        // sistema ya sabe — y peor, lo contestaría interpretando en vez de haciendo.
+        //
+        // Y traer «todo el contexto» no cuesta nada: el chat relee la sesión en cada frame, así que
+        // cambiar el id ES traerse el plan, los pendientes, los permisos y la pregunta abierta de la
+        // otra. El estado no vive en la pantalla.
+        if (str_starts_with($prompt, '/sessions')) {
+            return $this->cambiarDeSesion(trim(mb_substr($prompt, \strlen('/sessions'))));
+        }
+
         /** @var array{ok: bool, answer?: string, steps?: int, tools?: int, compacted?: bool, error?: string, hint?: string} $r */
         $r = $this->correr('agent', ['prompt' => $prompt, 'session' => $this->sesionDelChatId])
             ?? ['ok' => false, 'error' => 'esta app no declara la operación `agent`'];
 
         return $r;
+    }
+
+    /**
+     * Lista las sesiones, o se cambia a una — el `/sessions` del chat.
+     *
+     * Sin argumento enumera con lo que hace falta para elegir: en qué va cada una, cuántos pendientes
+     * tiene, y **cuánto quedó sin explicar** ({@see SessionOperations}). Con un id, cambia — y si ese
+     * id no existe, lo dice en vez de abrir una sesión vacía con ese nombre, que es lo que haría un
+     * default silencioso y dejaría a alguien hablándole a una sesión que creía que ya tenía historia.
+     *
+     * @return array{ok: bool, answer?: string, error?: string}
+     */
+    private function cambiarDeSesion(string $id): array
+    {
+        /** @var array{ok: bool, sessions?: list<array<string, mixed>>}|null $listado */
+        $listado = $this->correr('agent:sessions', []);
+        $sesiones = \is_array($listado) && \is_array($listado['sessions'] ?? null) ? $listado['sessions'] : [];
+
+        if ($id === '') {
+            if ($sesiones === []) {
+                return ['ok' => true, 'answer' => 'no hay sesiones todavía. Escribe algo y ésta se abre sola.'];
+            }
+
+            $lineas = ['sesiones — escribe `/sessions <id>` para cambiarte:'];
+            foreach ($sesiones as $s) {
+                $sin = \is_int($s['unexplained'] ?? null) ? $s['unexplained'] : 0;
+                $lineas[] = sprintf(
+                    '  %-18s %-20s %d pendiente(s)%s%s',
+                    (string) ($s['session'] ?? '?'),
+                    (string) ($s['state'] ?? '?'),
+                    \is_int($s['pending'] ?? null) ? $s['pending'] : 0,
+                    $sin > 0 ? sprintf(' · %d cambio(s) sin explicar', $sin) : '',
+                    ((string) ($s['session'] ?? '')) === $this->sesionDelChatId ? '   ← estás aquí' : '',
+                );
+            }
+
+            return ['ok' => true, 'answer' => implode("\n", $lineas)];
+        }
+
+        $existe = false;
+        foreach ($sesiones as $s) {
+            if (((string) ($s['session'] ?? '')) === $id) {
+                $existe = true;
+
+                break;
+            }
+        }
+
+        if (!$existe) {
+            return ['ok' => false, 'error' => "no existe la sesión «{$id}» — `/sessions` te las lista"];
+        }
+
+        $this->sesionDelChatId = $id;
+
+        return ['ok' => true, 'answer' => "ahora estás en «{$id}». Su plan y sus pendientes ya están aquí."];
     }
 
     /**

@@ -16,9 +16,13 @@ namespace App\Operations;
 
 use Milpa\Agent\AutonomyMode;
 use Milpa\Agent\Principal;
+use Milpa\Agent\Session;
 use Milpa\Agent\SessionStore;
+use Milpa\Agent\Todo;
+use Milpa\Agent\TodoStatus;
 use Milpa\Auth\AuthContext;
 use Milpa\Command\CommandProvider;
+use Milpa\Command\InvocationContext;
 use Milpa\Command\Operation;
 use Milpa\Interfaces\Di\DIContainerInterface;
 
@@ -95,9 +99,30 @@ final class SessionOperations implements CommandProvider
                 surfaces: ['cli', 'tui', 'mcp'],
             ),
             new Operation(
+                name: 'agent:timeline',
+                description: 'Lo que pasó en una sesión, traducido para pintarlo: tarjetas, plan y cierre',
+                handler: fn (array $input): array => $this->linea($input),
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'session' => ['type' => 'string', 'description' => 'Identificador de la sesión'],
+                        'since' => ['type' => 'integer', 'description' => 'La última secuencia que ya viste; 0 trae todo'],
+                    ],
+                    'required' => ['session'],
+                ],
+                mutating: false,
+                // POR HTTP TAMBIÉN, a diferencia de las otras. Leer lo que ya pasó no autoriza nada y
+                // es justo lo que un navegador necesita para pintar el trabajo en vivo. Las que sí
+                // deciden —contestar, cambiar el modo— siguen fuera de la web.
+                surfaces: ['cli', 'tui', 'mcp', 'http'],
+            ),
+            new Operation(
                 name: 'agent:answer',
                 description: 'Contesta la pregunta que dejó pausada una sesión, y la reanuda',
-                handler: fn (array $input): array => $this->contestar($input),
+                // EL CONTEXTO VIAJA POR EL MISMO CAMINO QUE LA INVOCACIÓN, no por el contenedor.
+                // Un handler que lo lee del ambiente puede olvidarse de leerlo y seguir funcionando,
+                // y el contenedor puede conservar el actor de la petición anterior.
+                handler: fn (array $input, ?InvocationContext $ctx = null): array => $this->contestar($input, $ctx),
                 inputSchema: [
                     'type' => 'object',
                     'properties' => [
@@ -107,12 +132,76 @@ final class SessionOperations implements CommandProvider
                     'required' => ['session', 'answer'],
                 ],
                 mutating: true,
-                // Fuera de HTTP por lo mismo que `agent`: contestar una pregunta de permiso desde una
-                // petición web es autorizar con las credenciales del servidor, y esta plantilla no
-                // toma esa decisión por nadie.
-                surfaces: ['cli', 'tui', 'mcp'],
+                // POR HTTP TAMBIÉN, ahora que la identidad llega entera. El comentario anterior decía
+                // que contestar desde la web era «autorizar con las credenciales del servidor», y eso
+                // describía un sistema sin `milpa/auth` cableado — que dejó de existir hace rato.
+                //
+                // Lo que hace que esto sea seguro no es el canal: es que el scope exija un actor
+                // autenticado, que el `InvocationContext` lo traiga hasta aquí, y que la operación se
+                // NIEGUE si no llega. Sin las tres, exponerla escribiría un permiso a nombre del
+                // proceso del servidor.
+                scopes: ['agent:answer'],
+                surfaces: ['cli', 'tui', 'mcp', 'http'],
             ),
         ];
+    }
+
+    /**
+     * Lo que pasó en una sesión, traducido — la misma respuesta para las tres superficies.
+     *
+     * No arma nada: le pide al almacén el `timeline()`, que a su vez usa el proyector. Que la terminal,
+     * el navegador y el agente reciban veredictos distintos del mismo hecho es un falsificador que
+     * este repositorio ya vio dispararse hoy —`ci-check` y la CI publicada difirieron tres veces— y la
+     * defensa es que haya un solo camino, no tres cuidadosos.
+     *
+     * @param array<string, mixed> $input
+     *
+     * @return array{ok: bool, session?: string, since?: int, events?: list<array<string, mixed>>, error?: string, hint?: string}
+     */
+    private function linea(array $input): array
+    {
+        [$almacen, $id, $error] = $this->target($input);
+        if ($error !== null || $almacen === null) {
+            return $error ?? ['ok' => false, 'error' => 'esta app no tiene dónde guardar sesiones'];
+        }
+
+        if ($almacen->load($id) === null) {
+            return ['ok' => false, 'error' => "no existe la sesión «{$id}»"];
+        }
+
+        $desde = \is_int($input['since'] ?? null) && $input['since'] > 0 ? $input['since'] : 0;
+        $hechos = $almacen->timeline($id, $desde);
+
+        // LA ÚLTIMA SECUENCIA VA EN LA RESPUESTA para que quien pregunte de nuevo sepa desde dónde,
+        // sin tener que mirar dentro de la lista ni llevar la cuenta por su lado. Un cliente que
+        // calcula su propio cursor es un cliente que puede calcularlo mal y perderse hechos en
+        // silencio.
+        $ultima = $desde;
+        foreach ($hechos as $hecho) {
+            $ultima = max($ultima, \is_int($hecho['at'] ?? null) ? $hecho['at'] : $ultima);
+        }
+
+        return ['ok' => true, 'session' => $id, 'since' => $ultima, 'events' => $hechos];
+    }
+
+    /**
+     * Cuántas mutaciones ocurrieron sin que nadie tocara una tarjeta que seguía abierta.
+     *
+     * Es el invariante de [Q-P19-C] reducido a un número por sesión: no dice que algo esté mal, dice
+     * cuánto **no se explicó**. Cero es una sesión limpia — o porque cerró todo, o porque no pasó nada
+     * mientras algo quedaba abierto, que también está bien.
+     */
+    private function trabajoSinExplicar(Session $sesion): int
+    {
+        $peor = 0;
+        foreach ($sesion->todos as $todo) {
+            if ($todo->status === TodoStatus::Done) {
+                continue;
+            }
+            $peor = max($peor, $sesion->mutations - $todo->mutationsAt);
+        }
+
+        return max(0, $peor);
     }
 
     /**
@@ -131,19 +220,38 @@ final class SessionOperations implements CommandProvider
      * salió que este lado no guardaba principal ninguno, y que aquél además prohíbe que el que pide
      * sea el que aprueba.
      */
-    private function quienContesta(): Principal
+    private function quienContesta(?InvocationContext $ctx = null): Principal
     {
+        // EL CONTEXTO MANDA cuando trae un actor verificable: viene de la política que ya autorizó,
+        // así que es la identidad que la auditoría tiene que conservar. Volver a derivarla aquí sería
+        // que política y auditoría registren principals distintos.
+        if ($ctx !== null && $ctx->isAttributable()) {
+            return new Principal((string) $ctx->actor, verified: true);
+        }
+
         $contexto = $this->container->has(AuthContext::class) ? $this->container->get(AuthContext::class) : null;
         if ($contexto instanceof AuthContext && $contexto->actor !== null) {
             return new Principal('actor:' . $contexto->actor->id, verified: true);
         }
 
+        return Principal::fromTerminal($this->usuarioDelSistema(), gethostname() ?: null);
+    }
+
+    /** El proceso que está corriendo esto, para acompañar al actor y nunca para reemplazarlo. */
+    private function procesoLocal(): string
+    {
+        return ($this->usuarioDelSistema() ?? 'desconocido') . '@' . (gethostname() ?: 'desconocido');
+    }
+
+    /** El usuario del sistema operativo, si el entorno lo dice. */
+    private function usuarioDelSistema(): ?string
+    {
         $usuario = getenv('USER');
         if (!\is_string($usuario) || $usuario === '') {
             $usuario = getenv('USERNAME');
         }
 
-        return Principal::fromTerminal(\is_string($usuario) ? $usuario : null, gethostname() ?: null);
+        return \is_string($usuario) && $usuario !== '' ? $usuario : null;
     }
 
     /**
@@ -174,6 +282,10 @@ final class SessionOperations implements CommandProvider
                     ? 'terminada'
                     : ($sesion->question !== null ? 'esperando respuesta' : 'viva'),
                 'pending' => \count($sesion->pendingTodos()),
+                // TRABAJO SIN EXPLICAR. El invariante existía en el stream y no lo leía nadie — que es
+                // el patrón que este repositorio lleva un mes cazando. Aquí es donde alguien mira para
+                // saber qué sesión necesita atención, así que aquí tiene que estar.
+                'unexplained' => $this->trabajoSinExplicar($sesion),
             ];
         }
 
@@ -212,6 +324,20 @@ final class SessionOperations implements CommandProvider
             // —el patrón que este repositorio lleva un mes cazando: una capacidad a la que le falta
             // la línea que la enchufa—. `agent:show` es donde alguien va a preguntar «¿quién
             // autorizó esto?», así que es donde tiene que estar la respuesta.
+            // QUÉ QUEDÓ ABIERTO Y CUÁNTO CAMBIÓ MIENTRAS TANTO. No se lee del evento de cierre sino
+            // que se deriva del estado, que es la misma cuenta: `mutations` de la sesión menos las que
+            // llevaba la tarjeta cuando alguien la tocó por última vez. Dos lugares que guarden lo
+            // mismo divergen; uno que lo derive, no.
+            'openWork' => array_values(array_map(
+                static fn (Todo $t): array => [
+                    'id' => $t->id,
+                    'text' => $t->text,
+                    'status' => $t->status->value,
+                    'origin' => $t->origin?->value,
+                    'mutationsSince' => max(0, $sesion->mutations - $t->mutationsAt),
+                ],
+                array_filter($sesion->todos, static fn (Todo $t): bool => $t->status !== TodoStatus::Done),
+            )),
             'decisions' => array_map(
                 static fn (array $d): array => [
                     'question' => $d['question'],
@@ -234,8 +360,26 @@ final class SessionOperations implements CommandProvider
      *
      * @return array<string, mixed>
      */
-    private function contestar(array $input): array
+    private function contestar(array $input, ?InvocationContext $ctx = null): array
     {
+        // ATRIBUCIÓN EXIGIDA, Y SIN DEGRADAR. En un canal que promete identidad —web, MCP— contestar
+        // sin actor verificable escribiría un permiso a nombre del proceso técnico, y ese registro se
+        // lee como auditoría sin serlo. La respuesta correcta es negarse.
+        //
+        // La terminal es el caso honesto y sigue permitida: ahí no hay actor y el registro lo dice —
+        // `cli:usuario@máquina`, sin verificar. Lo que no puede pasar es que un canal CON identidad
+        // la pierda al escribirla.
+        if ($ctx !== null && $ctx->channel !== 'cli' && !$ctx->isAttributable()) {
+            return [
+                'ok' => false,
+                'error' => sprintf(
+                    'contestar por «%s» exige un actor verificado, y esta invocación no lo trae',
+                    $ctx->channel,
+                ),
+                'hint' => 'autentica la petición: un permiso sin principal no es auditable',
+            ];
+        }
+
         [$almacen, $id, $error] = $this->target($input);
         if ($error !== null || $almacen === null) {
             return $error ?? ['ok' => false, 'error' => 'esta app no tiene dónde guardar sesiones'];
@@ -262,7 +406,13 @@ final class SessionOperations implements CommandProvider
         }
 
         $pregunta = $sesion->question;
-        $almacen->answer($id, $pregunta->id, $respuesta, $this->quienContesta());
+        $almacen->answer(
+            $id,
+            $pregunta->id,
+            $respuesta,
+            $this->quienContesta($ctx),
+            $ctx instanceof InvocationContext && $ctx->executor !== null ? $ctx->executor : $this->procesoLocal(),
+        );
 
         // Un «sí» a una pregunta de PERMISO otorga esa operación para el resto de la sesión. El
         // permiso se deriva del id de la pregunta y no de lo que alguien teclee: así no se puede
