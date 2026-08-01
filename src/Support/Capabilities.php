@@ -357,11 +357,25 @@ final class Capabilities
             'ok' => true,
             'capability' => $objetivo['package'],
             'command' => $comando,
-            // WHAT IT UNLOCKED, said by the package itself — so the caller does not have to run
-            // `capabilities` again to find out what just became possible.
-            'unlocked' => $objetivo['unlocks'] ?? [],
+            // WHAT IT UNLOCKED, read AFTER installing — the package could not declare anything
+            // before it was on disk, so reading `$objetivo` here would always return an empty list:
+            // a field that is always empty is the same defect this repo keeps finding, something
+            // declared that never lands.
+            'unlocked' => self::unlocksOf((string) $objetivo['package'], $vendor),
             'hint' => 'run `coa list` to see the new operations',
         ];
+    }
+
+    /**
+     * Lo que un paquete YA INSTALADO dice que desbloquea.
+     *
+     * @return list<mixed>
+     */
+    private static function unlocksOf(string $paquete, ?string $vendor): array
+    {
+        $cap = self::declaredBy($vendor)[$paquete] ?? null;
+
+        return \is_array($cap['unlocks'] ?? null) ? array_values($cap['unlocks']) : [];
     }
 
     /**

@@ -328,6 +328,31 @@ final class CapabilitiesTest extends TestCase
     }
 
     /**
+     * Y lo que desbloqueo se lee DESPUES de instalar, no antes.
+     *
+     * La primera version leia la lista del catalogo de faltantes — que esta vacia a proposito, porque
+     * un paquete ausente no puede declarar nada. El campo contestaba `[]` SIEMPRE: la forma exacta del
+     * defecto que este repositorio lleva un mes cazando, algo declarado que nunca aterriza. Aqui el
+     * runner de mentira instala de verdad en el vendor de mentira, que es la unica manera de que esta
+     * prueba pueda fallar.
+     */
+    public function testWhatItUnlockedIsReadAfterInstallingAndNotBefore(): void
+    {
+        $v = $this->vendorCon([]);
+
+        $r = Capabilities::install('milpa/agent', $v, function (string $cmd) use ($v): array {
+            // El paquete "llega" al vendor, que es lo que hace composer.
+            $this->vendorCon([$this->paquete('milpa/agent', 'agent', 'agent.sessions')]);
+
+            return [0, []];
+        });
+
+        self::assertTrue($r['ok']);
+        self::assertNotSame([], $r['unlocked'], 'un campo que siempre contesta vacio no informa de nada');
+        self::assertSame(['algo'], $r['unlocked']);
+    }
+
+    /**
      * Y si composer se niega, se devuelve LO QUE DIJO.
      *
      * Un resumen convertiria un problema con arreglo —un conflicto de version, sin red— en «no
