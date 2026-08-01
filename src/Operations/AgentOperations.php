@@ -82,7 +82,16 @@ class AgentOperations implements CommandProvider
         // no anunciarla: quien lee `coa list` —persona o agente— la cuenta como disponible, la llama,
         // y aprende que el listado miente. `coa capabilities` es donde se ve lo que FALTA, con el
         // `composer require` que lo enciende.
-        if (!Capabilities::installed('agent') || !Capabilities::installed('agent-runs')) {
+        // SÓLO `agent-runs`, y la diferencia importa: correr y RECORDAR son dos capacidades.
+        //
+        // La primera versión exigía las dos, y con eso una app con modelo pero sin `milpa/agent` no
+        // tenía `coa agent` en absoluto — cuando `run()` ya maneja el almacén nulo y contesta igual,
+        // sólo que sin sobrevivir al proceso. Lo destapó montar el laboratorio de Q-P20-A: el brazo
+        // que debía pedirle al agente que instalara las sesiones no podía ni arrancar al agente.
+        //
+        // Es el mismo error que este contrato existe para no cometer: dos capacidades fundidas en una
+        // guarda contestan por la que falta, no por la que hace falta.
+        if (!Capabilities::installed('agent-runs')) {
             return [];
         }
 
