@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/getmilpa/framework/compare/v0.10.0...v0.10.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* what a capability unlocked is read after installing it ([77d058c](https://github.com/getmilpa/framework/commit/77d058cffb5cb0ca48a3cddcb8d98e4db87024e1))
+
 ## [0.10.0](https://github.com/getmilpa/framework/compare/v0.9.1...v0.10.0) (2026-08-01)
 
 
