@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Console;
 
+use App\Console\Application;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -142,5 +143,131 @@ final class ApplicationTest extends TestCase
 
         self::assertStringContainsString('no existe el comando', $r['texto']);
         self::assertStringContainsString('plugins:list', $r['texto']);
+    }
+
+    /**
+     * `coa doctor` corre EN PROCESO, que es como se prueba lo que imprime — y a la vez la prueba de
+     * que no necesita el kernel arriba.
+     *
+     * @return array{texto: string, codigo: int}
+     */
+    private function doctorEnProceso(): array
+    {
+        $app = new Application(\dirname(__DIR__, 2));
+
+        ob_start();
+        $codigo = $app->run(['coa', 'doctor']);
+        $texto = (string) ob_get_clean();
+
+        return ['texto' => $texto, 'codigo' => $codigo];
+    }
+
+    /**
+     * El doctor explica la app sin arrancarla, y nombra lo que cada plugin provee y pide.
+     *
+     * Es lo que hace que exista: cuando el grafo no cierra, el kernel no arranca, `coa` no despacha y
+     * NINGUNA operación corre — medido en esta misma app, las quince herramientas del agente caídas y
+     * una línea de error como todo el dato. La herramienta que explica por qué algo no arranca no
+     * puede necesitar que arranque.
+     */
+    public function testTheDoctorExplainsTheAppWithoutBootingIt(): void
+    {
+        $r = $this->doctorEnProceso();
+
+        self::assertSame(0, $r['codigo'], $r['texto']);
+        self::assertStringContainsString('plugin(s) declarado(s)', $r['texto']);
+        self::assertStringContainsString('HelloPlugin', $r['texto']);
+        self::assertStringContainsString('provee:', $r['texto']);
+        self::assertStringContainsString('pide:', $r['texto']);
+        self::assertStringContainsString('✓ el grafo cierra', $r['texto']);
+    }
+
+    /**
+     * Y sale con código 0 cuando cierra — porque un CI que lo corra necesita el veredicto, no el texto.
+     */
+    public function testTheDoctorExitsGreenWhenTheGraphCloses(): void
+    {
+        self::assertSame(0, $this->doctorEnProceso()['codigo']);
+    }
+
+    /** Se ofrece en la ayuda: una capacidad que existe y no se anuncia no la encuentra nadie. */
+    public function testTheDoctorIsOfferedInTheHelp(): void
+    {
+        self::assertStringContainsString('doctor', $this->coa()['texto']);
+    }
+
+    /**
+     * Cuando el grafo NO cierra, el doctor imprime lo aprendible del resolver tal cual viene.
+     *
+     * Ésta es la mitad que importa. Un doctor que sólo sabe describir apps sanas es un adorno: el
+     * momento en que alguien lo corre es justo cuando algo no arranca, y ahí lo que decide si la
+     * persona sale del hoyo es que el error traiga POR QUÉ, cómo se arregla, y qué acción aplicar.
+     *
+     * Se arma una app con un plugin que pide una capacidad que nadie provee — el caso más común de
+     * todos — y se verifica que el texto lleve las cuatro cosas.
+     */
+    public function testWhenTheGraphDoesNotCloseTheDoctorPrintsTheLearnableError(): void
+    {
+        $raiz = sys_get_temp_dir() . '/milpa-doctor-roto-' . bin2hex(random_bytes(4));
+        mkdir($raiz . '/config', 0o777, true);
+        mkdir($raiz . '/src/Plugins/Huerfano', 0o777, true);
+
+        file_put_contents($raiz . '/src/Plugins/Huerfano/HuerfanoPlugin.php', <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App\Plugins\Huerfano;
+
+            use Milpa\Attributes\PluginMetadata;
+            use Milpa\Interfaces\Plugin\PluginInterface;
+            use Milpa\Plugin\PluginBase;
+
+            #[PluginMetadata(
+                version: '0.1.0',
+                author: 'prueba',
+                site: 'https://example.com',
+                name: 'Huerfano',
+                type: 'Service',
+                requires: ['nadie.provee.esto.v1'],
+            )]
+            final class HuerfanoPlugin extends PluginBase implements PluginInterface
+            {
+                public function boot(): void {}
+                public function install(): void {}
+                public function uninstall(): void {}
+                public function enable(): void {}
+                public function disable(): void {}
+            }
+            PHP);
+
+        file_put_contents($raiz . '/config/plugins.php', "<?php\n\nreturn [\\App\\Plugins\\Huerfano\\HuerfanoPlugin::class];\n");
+
+        require_once $raiz . '/src/Plugins/Huerfano/HuerfanoPlugin.php';
+
+        $app = new Application($raiz);
+        ob_start();
+        $codigo = $app->run(['coa', 'doctor']);
+        $texto = (string) ob_get_clean();
+
+        self::assertSame(1, $codigo, $texto);
+        self::assertStringContainsString('nadie.provee.esto.v1', $texto);
+
+        $this->borrar($raiz);
+    }
+
+    private function borrar(string $ruta): void
+    {
+        if (!is_dir($ruta)) {
+            return;
+        }
+        foreach (scandir($ruta) ?: [] as $e) {
+            if ($e === '.' || $e === '..') {
+                continue;
+            }
+            $hijo = $ruta . '/' . $e;
+            is_dir($hijo) ? $this->borrar($hijo) : @unlink($hijo);
+        }
+        @rmdir($ruta);
     }
 }

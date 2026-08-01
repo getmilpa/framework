@@ -73,7 +73,14 @@ if (!$registry instanceof ToolRegistry) {
     exit(1);
 }
 
-(new \Milpa\Console\McpProjector())->projectAll($kernel->commands(), $registry, $kernel->container());
+// TODO lo que la app declara, no sólo lo que los plugins arrancaron: `kernel->commands()` deja
+// fuera lo de `config/operations.php`, así que un cliente MCP veía menos herramientas que `coa`.
+// Una superficie que ofrece menos que otra sobre la misma app es un inventario mintiendo.
+(new \Milpa\Console\McpProjector())->projectAll(
+    \App\Support\Operations::all($kernel, $root),
+    $registry,
+    $kernel->container(),
+);
 
 $service = new JsonRpcService($registry);
 

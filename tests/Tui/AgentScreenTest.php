@@ -15,6 +15,11 @@ declare(strict_types=1);
 namespace App\Tests\Tui;
 
 use App\Tui\AgentScreen;
+use Milpa\Agent\AutonomyMode;
+use Milpa\Agent\PendingQuestion;
+use Milpa\Agent\Session;
+use Milpa\Agent\Todo;
+use Milpa\Agent\TodoStatus;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -29,7 +34,7 @@ final class AgentScreenTest extends TestCase
     /** @param \Closure(string): array<string, mixed> $responder */
     private function pantalla(\Closure $responder): AgentScreen
     {
-        return new AgentScreen($responder, 74, 16, false);
+        return new AgentScreen($responder, null, null, 74, 16, false);
     }
 
     private function teclear(AgentScreen $pantalla, string $texto): void
@@ -158,5 +163,164 @@ final class AgentScreenTest extends TestCase
             'Pregúntale algo',
             $this->pantalla(static fn (string $q): array => ['ok' => true])->render(),
         );
+    }
+
+    /**
+     * @param \Closure(string): array<string, mixed>      $responder
+     * @param \Closure(string): array<string, mixed>|null $contestar
+     */
+    private function pantallaDe(Session $sesion, \Closure $responder, ?\Closure $contestar = null): AgentScreen
+    {
+        return new AgentScreen(
+            $responder,
+            static fn (): Session => $sesion,
+            $contestar,
+            74,
+            24,
+            false,
+        );
+    }
+
+    /**
+     * LA SESIÓN ANTES QUE LA CONVERSACIÓN — que es P16.7 entero.
+     *
+     * Lo que hace usable una corrida de cuarenta pasos no es releer lo que dijo: es ver en qué va. La
+     * transcripción es lo que sobra cuando la pantalla es chica, no lo que se conserva.
+     */
+    public function testTheScreenShowsTheSessionState(): void
+    {
+        $sesion = new Session(
+            id: 'jornada',
+            goal: 'migrar Inventario a sqlite',
+            mode: AutonomyMode::Auto,
+            plan: '1. entidad  2. controller',
+            todos: [
+                new Todo('t1', 'escribir la entidad', TodoStatus::Done),
+                new Todo('t2', 'escribir el controller'),
+                new Todo('t3', 'migrar los datos', TodoStatus::Blocked),
+            ],
+            permissions: ['make', 'test'],
+        );
+
+        $texto = $this->pantallaDe($sesion, static fn (string $q): array => ['ok' => true])->render();
+
+        self::assertStringContainsString('jornada', $texto);
+        self::assertStringContainsString('auto', $texto, 'con cuánta autonomía corre');
+        self::assertStringContainsString('migrar Inventario a sqlite', $texto);
+        self::assertStringContainsString('1. entidad', $texto);
+        self::assertStringContainsString('[x] escribir la entidad', $texto);
+        self::assertStringContainsString('[ ] escribir el controller', $texto);
+        self::assertStringContainsString('[!] migrar los datos', $texto);
+        self::assertStringContainsString('autorizado: make, test', $texto);
+    }
+
+    /**
+     * Una sesión ESPERANDO enseña la pregunta donde iba el prompt.
+     *
+     * Es lo que hay que hacer, no un aviso al costado: la sesión no es corrible hasta que alguien
+     * conteste, así que ofrecer el prompt normal invitaría a lo único que no va a funcionar.
+     */
+    public function testAWaitingSessionShowsTheQuestionWhereThePromptGoes(): void
+    {
+        $sesion = new Session(
+            id: 's1',
+            goal: 'x',
+            question: new PendingQuestion('perm:make', '¿autorizas make?', ['sí', 'no'], '{"what":"plugin"}'),
+        );
+
+        $texto = $this->pantallaDe($sesion, static fn (string $q): array => ['ok' => true])->render();
+
+        self::assertStringContainsString('¿autorizas make?', $texto);
+        self::assertStringContainsString('sí · no', $texto, 'las opciones');
+        self::assertStringContainsString('what', $texto, 'y sobre qué');
+        self::assertStringContainsString('[Enter] contestar', $texto, 'la ayuda cambia con la situación');
+    }
+
+    /**
+     * Y ENTER CONTESTA, en vez de mandarle la respuesta al agente.
+     *
+     * Con una pregunta abierta la sesión no es corrible: mandarla al agente devolvería «está esperando
+     * una respuesta» y habría que salirse del TUI a correr `coa agent:answer`. El lugar natural para
+     * contestar es donde te la están preguntando.
+     */
+    public function testEnterAnswersThePendingQuestionInsteadOfAskingTheAgent(): void
+    {
+        $sesion = new Session(
+            id: 's1',
+            goal: 'x',
+            question: new PendingQuestion('perm:make', '¿autorizas make?', ['sí', 'no']),
+        );
+
+        $alAgente = 0;
+        $contestado = null;
+        $pantalla = $this->pantallaDe(
+            $sesion,
+            static function (string $q) use (&$alAgente): array {
+                ++$alAgente;
+
+                return ['ok' => true];
+            },
+            static function (string $r) use (&$contestado): array {
+                $contestado = $r;
+
+                return ['ok' => true, 'granted' => 'make'];
+            },
+        );
+
+        $this->teclear($pantalla, 'sí');
+        $pantalla->press('enter');
+
+        self::assertSame('sí', $contestado);
+        self::assertSame(0, $alAgente, 'no se le mandó nada al agente');
+        self::assertStringContainsString('autorizado: make', $pantalla->conversation()[1]['texto']);
+    }
+
+    /** Sin sesión, la pantalla es la de antes: la memoria es opcional y no puede romper lo que servía. */
+    public function testWithoutASessionTheScreenIsWhatItWas(): void
+    {
+        $texto = $this->pantalla(static fn (string $q): array => ['ok' => true])->render();
+
+        self::assertStringContainsString('El agente de esta app', $texto);
+        self::assertStringContainsString('[Enter] preguntar', $texto);
+    }
+
+    /**
+     * Lo que costó la última vuelta se ve, y que se haya compactado también.
+     *
+     * Los dos números distinguen haber trabajado de haber contestado de memoria; y una compactación
+     * que no se anuncia deja a la sesión contestando sobre un resumen sin que nadie sepa por qué.
+     */
+    public function testWhatTheLastRoundCostIsVisibleIncludingACompaction(): void
+    {
+        $sesion = new Session(id: 's1', goal: 'x', compactedThrough: 12);
+        $pantalla = $this->pantallaDe($sesion, static fn (string $q): array => [
+            'ok' => true, 'answer' => 'listo', 'steps' => 7, 'tools' => 14, 'compacted' => true,
+        ]);
+
+        $this->teclear($pantalla, 'sigue');
+        $pantalla->press('enter');
+
+        $texto = $pantalla->render();
+        self::assertStringContainsString('7 paso(s)', $texto);
+        self::assertStringContainsString('14 herramientas', $texto);
+        self::assertStringContainsString('se compactó', $texto);
+        self::assertStringContainsString('compactada', $texto, 'y la sesión lo dice de por sí');
+    }
+
+    /**
+     * Backspace borra el último carácter de lo que se va escribiendo.
+     *
+     * Suena trivial y es la diferencia entre un campo y una máquina de escribir: sin él, un error de
+     * dedo obliga a mandar la pregunta mal o a salir de la pantalla.
+     */
+    public function testBackspaceDeletesTheLastCharacter(): void
+    {
+        $pantalla = $this->pantalla(static fn (string $q): array => ['ok' => true, 'answer' => 'ok']);
+
+        $this->teclear($pantalla, 'hola');
+        $pantalla->press('backspace');
+        $pantalla->press('enter');
+
+        self::assertSame('hol', $pantalla->conversation()[0]['texto'], 'backspace borró uno');
     }
 }

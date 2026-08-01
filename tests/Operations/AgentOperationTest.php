@@ -17,6 +17,10 @@ namespace App\Tests\Operations;
 use App\Operations\AgentOperations;
 use Milpa\Command\Operation;
 use Milpa\Container\DIContainer;
+use Milpa\Agent\AutonomyMode;
+use Milpa\Agent\PendingQuestion;
+use Milpa\Agent\SessionStore;
+use Milpa\EventStore\InMemoryEventStore;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -94,6 +98,8 @@ final class AgentOperationTest extends TestCase
                 string $llave,
                 string $modelo,
                 callable $onStep,
+                array $history = [],
+                ?\Milpa\AiGateway\ToolCallGate $gate = null,
             ): string {
                 $onStep();
                 $onStep();
@@ -172,6 +178,8 @@ final class AgentOperationTest extends TestCase
                 string $llave,
                 string $modelo,
                 callable $onStep,
+                array $history = [],
+                ?\Milpa\AiGateway\ToolCallGate $gate = null,
             ): string {
                 static::$visto = ['proveedor' => $proveedor, 'llave' => $llave, 'modelo' => $modelo];
 
@@ -302,6 +310,8 @@ final class AgentOperationTest extends TestCase
                     string $llave,
                     string $modelo,
                     callable $onStep,
+                    array $history = [],
+                    ?\Milpa\AiGateway\ToolCallGate $gate = null,
                 ): string {
                     static::$visto = ['proveedor' => $proveedor, 'llave' => $llave, 'modelo' => $modelo];
 
@@ -354,5 +364,446 @@ final class AgentOperationTest extends TestCase
         $metodo = new \ReflectionMethod(new AgentOperations(new DIContainer()), 'extraHeaders');
 
         self::assertSame([], $metodo->invoke(new AgentOperations(new DIContainer())));
+    }
+
+    /**
+     * Lo que el agente SABE de esta app antes de que nadie le pregunte.
+     *
+     * El prompt era una línea —«usa las herramientas y no inventes»— y eso dice qué se puede hacer sin
+     * decir cómo está armada la app. Medido contra un modelo de verdad: a «quiero guardar en sqlite en
+     * vez de json» contestó que creara un `SQLitePersistencePlugin` con `make plugin`. Inventó un
+     * plugin que no existe para resolver algo que es una línea de `config/app.php`, y no estaba
+     * desobedeciendo: estaba llenando un hueco. Un agente sin contexto no se calla, adivina.
+     */
+    public function testTheSystemPromptSaysHowThisAppIsBuilt(): void
+    {
+        $prompt = $this->promptDeSistema(new AgentOperations(new DIContainer()));
+
+        self::assertStringContainsString('config/app.php', $prompt);
+        self::assertStringContainsString('storage', $prompt);
+        self::assertStringContainsString('sqlite', $prompt);
+        self::assertStringContainsString('RepositoryFactory', $prompt);
+        self::assertStringContainsString(
+            'config/plugins.php',
+            $prompt,
+            'andamiar un plugin no lo enciende, y esa es la confusión más cara',
+        );
+        self::assertStringContainsString(
+            'guidance',
+            $prompt,
+            'las guías que devuelven las herramientas son el siguiente paso real, no adorno',
+        );
+    }
+
+    /** Lo que esta app en particular quiere que su agente sepa entra por `agent.instructions`. */
+    public function testTheAppCanAddItsOwnInstructions(): void
+    {
+        $contenedor = new DIContainer();
+        $contenedor->registerService(
+            \Milpa\Runtime\Config::class,
+            new \Milpa\Runtime\Config(['agent' => ['instructions' => 'Los precios de esta app van en centavos.']]),
+        );
+
+        $prompt = $this->promptDeSistema(new AgentOperations($contenedor));
+
+        self::assertStringContainsString('van en centavos', $prompt);
+    }
+
+    /**
+     * Y lo que cada plugin arrancado contribuye por `getPromptSections()` ATERRIZA en el prompt.
+     *
+     * Es la costura de siempre: vive en `ToolProviderInterface`, los stubs que este framework genera
+     * traen su marcador `// {coa:tool-prompts}`, `PluginsManager` sabe juntarlas — y nadie las leía. Un
+     * plugin que contribuye herramientas también contribuye lo que hay que saber para usarlas, y ese
+     * texto se estaba tirando.
+     */
+    public function testEachPluginContributionLandsInThePrompt(): void
+    {
+        $agente = new class (new DIContainer()) extends AgentOperations {
+            public function promptVisible(): string
+            {
+                return $this->systemPrompt();
+            }
+
+            /** @return list<string> */
+            protected function promptSectionsOfPlugins(): array
+            {
+                return ['Los SKU de este plugin siempre traen guion.', '', '   '];
+            }
+        };
+
+        $prompt = $agente->promptVisible();
+
+        self::assertStringContainsString('Los SKU de este plugin siempre traen guion.', $prompt);
+        self::assertStringContainsString('Eres el agente de esta app Milpa', $prompt, 'lo base no se pierde');
+
+        // Y un separador vacío no es una sección: `PluginsManager` intercala cadenas vacías entre
+        // plugins, y una que llegara al prompt dejaría un hueco donde el modelo espera contenido.
+        // Las partes se unen con una línea en blanco, así que contarlas cuenta las secciones reales:
+        // las tres de base más la del plugin, y ninguna de las dos vacías que se le pasaron.
+        self::assertCount(4, explode("\n\n", $prompt));
+        self::assertSame(trim($prompt), $prompt, 'sin relleno al final');
+    }
+
+    /** Se camina de verdad a los plugins arrancados: la app fresca no truena al armar su prompt. */
+    public function testTheRealWalkOverBootedPluginsHolds(): void
+    {
+        $kernel = \App\Tests\Support\OperationsTest::bootedKernel();
+
+        $prompt = $this->promptDeSistema(new AgentOperations($kernel->container()));
+
+        self::assertStringContainsString('Eres el agente de esta app Milpa', $prompt);
+        self::assertStringContainsString('storage', $prompt);
+    }
+
+    private function promptDeSistema(AgentOperations $proveedor): string
+    {
+        return (string) (new \ReflectionMethod($proveedor, 'systemPrompt'))->invoke($proveedor);
+    }
+
+    /**
+     * Un agente con sesión: apunta lo dicho y devuelve el historial en la siguiente vuelta (P16.1).
+     *
+     * @param \Closure(string): string $responder
+     */
+    private function agenteConSesion(\Closure $responder, SessionStore $almacen, ?array &$historialVisto = null): AgentOperations
+    {
+        putenv('ANTHROPIC_API_KEY=llave-de-prueba');
+
+        $kernel = \App\Tests\Support\OperationsTest::bootedKernel();
+
+        return new class ($kernel->container(), $responder, $almacen, $historialVisto) extends AgentOperations {
+            /** @param \Closure(string): string $responder */
+            public function __construct(
+                \Milpa\Interfaces\Di\DIContainerInterface $container,
+                private readonly \Closure $responder,
+                private readonly SessionStore $almacen,
+                private ?array &$historialVisto,
+            ) {
+                parent::__construct($container);
+            }
+
+            protected function sessions(): ?SessionStore
+            {
+                return $this->almacen;
+            }
+
+            protected function ask(
+                string $prompt,
+                int $pasos,
+                \Milpa\ToolRuntime\ToolRegistry $registry,
+                string $proveedor,
+                string $llave,
+                string $modelo,
+                callable $onStep,
+                array $history = [],
+                ?\Milpa\AiGateway\ToolCallGate $gate = null,
+            ): string {
+                $this->historialVisto = $history;
+                $onStep();
+
+                return ($this->responder)($prompt);
+            }
+        };
+    }
+
+    /**
+     * Sin `--session` se comporta EXACTAMENTE como antes.
+     *
+     * La memoria es opcional y no puede cambiar lo que ya funcionaba: quien sólo quiere preguntar algo
+     * no tiene que aprender un concepto nuevo ni dejar un archivo en disco.
+     */
+    public function testWithoutASessionNothingIsRemembered(): void
+    {
+        $eventos = new InMemoryEventStore();
+        $almacen = new SessionStore($eventos);
+        $agente = $this->agenteConSesion(static fn (string $p): string => 'listo', $almacen);
+
+        $r = $this->llamar($agente, ['prompt' => 'hola']);
+
+        self::assertTrue($r['ok']);
+        self::assertArrayNotHasKey('session', $r, 'no hay sesión que reportar');
+        self::assertSame([], $almacen->ids(), 'y no se abrió ninguna');
+    }
+
+    /**
+     * Con `--session`, los dos turnos quedan apendados y la siguiente vuelta los recibe.
+     *
+     * Es P16.1 entero: antes de esto el framework le pasaba `[]` de historial en cada llamada, así que
+     * preguntarle dos cosas seguidas eran dos desconocidos.
+     */
+    public function testWithASessionBothTurnsAreRecordedAndComeBackAsHistory(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $historial = null;
+        $agente = $this->agenteConSesion(static fn (string $p): string => "contesté a: {$p}", $almacen, $historial);
+        $primera = $this->llamar($agente, ['prompt' => 'me llamo Rod', 'session' => 's1']);
+        self::assertTrue($primera['ok']);
+        self::assertSame('s1', $primera['session']);
+        self::assertSame([], $historial, 'la primera vuelta no tiene pasado');
+
+        $segunda = $this->llamar($agente, ['prompt' => '¿cómo me llamo?', 'session' => 's1']);
+        self::assertTrue($segunda['ok']);
+
+        // Lo que recibió el modelo la segunda vez: la pregunta y la respuesta de la primera.
+        self::assertNotNull($historial);
+        self::assertCount(2, $historial);
+        self::assertSame('me llamo Rod', $historial[0]['content']);
+        self::assertSame('contesté a: me llamo Rod', $historial[1]['content']);
+
+        // Y el stream tiene los cuatro turnos, que es lo que hace auditable la sesión.
+        $sesion = $almacen->load('s1');
+        self::assertNotNull($sesion);
+        self::assertCount(4, $sesion->turns);
+        self::assertSame('me llamo Rod', $sesion->goal, 'el primer prompt es el objetivo con el que se abrió');
+    }
+
+    /**
+     * Una sesión que espera una respuesta NO se sigue por accidente.
+     *
+     * Seguirla sería contestar por el humano que no contestó — y peor, hacerlo en silencio: el agente
+     * seguiría con la suposición que motivó la pregunta.
+     */
+    public function testASessionWaitingForAnAnswerRefusesToContinue(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('s1', 'migrar');
+        $almacen->ask('s1', new PendingQuestion('q1', '¿sqlite o mysql?', ['sqlite', 'mysql']));
+
+        $agente = $this->agenteConSesion(static fn (string $p): string => 'no debería llegar aquí', $almacen);
+        $r = $this->llamar($agente, ['prompt' => 'sigue', 'session' => 's1']);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('esperando una respuesta', (string) $r['error']);
+        self::assertStringContainsString('sqlite o mysql', (string) $r['error'], 'dice QUÉ se le preguntó');
+    }
+
+    /** Una sesión terminada tampoco: se abre otra, y la negativa dice cómo. */
+    public function testAnEndedSessionRefusesAndSaysWhatToDo(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('s1', 'migrar');
+        $almacen->end('s1', 'objetivo cumplido');
+
+        $agente = $this->agenteConSesion(static fn (string $p): string => 'x', $almacen);
+        $r = $this->llamar($agente, ['prompt' => 'otra cosa', 'session' => 's1']);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('ya terminó', (string) $r['error']);
+        self::assertStringContainsString('objetivo cumplido', (string) $r['error']);
+        self::assertStringContainsString('--session', (string) $r['hint']);
+    }
+
+    /**
+     * Lo que se le manda al modelo es la VENTANA, no todo el stream.
+     *
+     * Es lo que hace que compactar sirva de algo: el stream conserva los cuarenta turnos y el modelo
+     * recibe un resumen más lo reciente. Sin esto, compactar sería un evento que nadie honra.
+     */
+    public function testWhatReachesTheModelIsTheWindowAndNotTheWholeStream(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('s1', 'una jornada larga');
+        for ($i = 1; $i <= 10; ++$i) {
+            $almacen->recordTurn('s1', 'user', "turno {$i}");
+        }
+        $sesion = $almacen->load('s1');
+        self::assertNotNull($sesion);
+        $almacen->compact('s1', 'ya se migraron tres entidades', $sesion->turns[7]['seq']);
+
+        $historial = null;
+        $agente = $this->agenteConSesion(static fn (string $p): string => 'ok', $almacen, $historial);
+        $this->llamar($agente, ['prompt' => 'sigue', 'session' => 's1']);
+
+        self::assertNotNull($historial);
+        self::assertSame('system', $historial[0]['role']);
+        self::assertStringContainsString('ya se migraron tres entidades', $historial[0]['content']);
+        self::assertCount(3, $historial, 'el resumen más los dos turnos que no cubre');
+    }
+
+    /**
+     * Corre la operación de este proveedor con esa entrada.
+     *
+     * @param array<string, mixed> $entrada
+     *
+     * @return array<string, mixed>
+     */
+    private function llamar(AgentOperations $proveedor, array $entrada): array
+    {
+        $handler = $this->operacionDe($proveedor)->handler;
+        self::assertIsCallable($handler);
+
+        /** @var array<string, mixed> $r */
+        $r = $handler($entrada);
+
+        return $r;
+    }
+
+    /**
+     * `--mode` elige la autonomía al ABRIR la sesión.
+     *
+     * `ask` cuando no se dice: una sesión que empieza pidiendo permiso enseña qué va a hacer antes de
+     * hacerlo. El default contrario pediría confianza antes de haberla ganado.
+     */
+    public function testTheModeCanBeChosenWhenTheSessionOpens(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $agente = $this->agenteConSesion(static fn (string $p): string => 'ok', $almacen);
+
+        $this->llamar($agente, ['prompt' => 'hola', 'session' => 's1', 'mode' => 'auto']);
+        self::assertSame(AutonomyMode::Auto, $almacen->load('s1')?->mode);
+
+        $this->llamar($agente, ['prompt' => 'hola', 'session' => 's2']);
+        self::assertSame(AutonomyMode::Ask, $almacen->load('s2')?->mode, 'sin decir nada, ask');
+    }
+
+    /**
+     * Un `--mode` sobre una sesión viva la cambia; NO decir nada no la regresa al default.
+     *
+     * El modo es de la sesión, no del comando. Heredar el default de cada invocación devolvería a
+     * `ask` una sesión que alguien puso en `auto` a propósito — y lo haría en silencio, que es peor.
+     */
+    public function testAModeOnALiveSessionChangesItAndSilenceLeavesItAlone(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $agente = $this->agenteConSesion(static fn (string $p): string => 'ok', $almacen);
+
+        $this->llamar($agente, ['prompt' => 'uno', 'session' => 's1']);
+        self::assertSame(AutonomyMode::Ask, $almacen->load('s1')?->mode);
+
+        $this->llamar($agente, ['prompt' => 'dos', 'session' => 's1', 'mode' => 'auto']);
+        self::assertSame(AutonomyMode::Auto, $almacen->load('s1')?->mode);
+
+        $this->llamar($agente, ['prompt' => 'tres', 'session' => 's1']);
+        self::assertSame(AutonomyMode::Auto, $almacen->load('s1')?->mode, 'el silencio no la regresa');
+    }
+
+    /**
+     * Al pasarse del umbral, la sesión se compacta ANTES de preguntar — y se DICE.
+     *
+     * Antes, porque compactar después sería descubrir que la ventana no cabía cuando el proveedor ya
+     * la rechazó. Y se dice porque es lo único de esta operación que cambia en silencio lo que el
+     * modelo ve: una sesión que empieza a contestar distinto sin que nadie sepa por qué se depura
+     * durante una hora.
+     */
+    public function testALongSessionIsCompactedBeforeAskingAndSaysSo(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('s1', 'una jornada larga');
+        for ($i = 1; $i <= 30; ++$i) {
+            $almacen->recordTurn('s1', 'user', "turno {$i}");
+        }
+
+        $historial = null;
+        $agente = $this->agenteConSesion(static fn (string $p): string => 'ok', $almacen, $historial);
+        // Umbral bajo para no generar cuarenta turnos: lo que se mide es el cableado, no el número.
+        $agente = $this->conUmbral($agente, $almacen, 20, 5, $historial);
+
+        $r = $this->llamar($agente, ['prompt' => 'sigue', 'session' => 's1']);
+
+        self::assertTrue($r['ok']);
+        self::assertTrue($r['compacted'] ?? false, 'compactó, y lo dice');
+
+        // Y lo que recibió el modelo es la ventana NUEVA: resumen + los recientes + el prompt de ahora.
+        self::assertNotNull($historial);
+        self::assertSame('system', $historial[0]['role']);
+        self::assertStringContainsString('una jornada larga', $historial[0]['content']);
+        self::assertLessThan(30, \count($historial), 'la ventana se acortó');
+
+        // El stream, en cambio, no perdió nada.
+        self::assertCount(32, $almacen->load('s1')?->turns ?? [], 'los 30 de antes, más la pregunta y la respuesta de ahora');
+    }
+
+    /** Por debajo del umbral no compacta, y no lo dice. */
+    public function testAShortSessionIsNotCompacted(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $agente = $this->agenteConSesion(static fn (string $p): string => 'ok', $almacen);
+
+        $r = $this->llamar($agente, ['prompt' => 'hola', 'session' => 's1']);
+
+        self::assertArrayNotHasKey('compacted', $r);
+    }
+
+    /** Un agente con el umbral de compactación fijado, para no generar cuarenta turnos en una prueba. */
+    private function conUmbral(
+        AgentOperations $original,
+        SessionStore $almacen,
+        int $maximo,
+        int $recientes,
+        ?array &$historialVisto = null,
+    ): AgentOperations {
+        putenv('ANTHROPIC_API_KEY=llave-de-prueba');
+        $kernel = \App\Tests\Support\OperationsTest::bootedKernel();
+
+        return new class ($kernel->container(), $almacen, $maximo, $recientes, $historialVisto) extends AgentOperations {
+            public function __construct(
+                \Milpa\Interfaces\Di\DIContainerInterface $container,
+                private readonly SessionStore $almacen,
+                private readonly int $maximo,
+                private readonly int $recientes,
+                private ?array &$historialVisto,
+            ) {
+                parent::__construct($container);
+            }
+
+            protected function sessions(): ?SessionStore
+            {
+                return $this->almacen;
+            }
+
+            protected function compactor(): \Milpa\Agent\Compactor
+            {
+                return new \Milpa\Agent\Compactor($this->maximo, $this->recientes);
+            }
+
+            protected function ask(
+                string $prompt,
+                int $pasos,
+                \Milpa\ToolRuntime\ToolRegistry $registry,
+                string $proveedor,
+                string $llave,
+                string $modelo,
+                callable $onStep,
+                array $history = [],
+                ?\Milpa\AiGateway\ToolCallGate $gate = null,
+            ): string {
+                $this->historialVisto = $history;
+                $onStep();
+
+                return 'ok';
+            }
+        };
+    }
+
+    /**
+     * La ventana de permiso sale de la config del host, y SIN default.
+     *
+     * Cuánto tiempo tiene un humano para contestar antes de que la sesión se declare muerta depende
+     * de quién opera el agente — una guardia, una jornada, un fin de semana. Un número inventado en
+     * el runtime mataría sesiones de gente que nunca lo eligió, así que sin declaración no hay plazo.
+     *
+     * Y una ventana ILEGIBLE tampoco se convierte en una inventada: se ignora. De los dos errores
+     * posibles, adivinar es el caro — un typo en un archivo de configuración empezaría a matar
+     * sesiones sin que nadie lo pidiera.
+     */
+    public function testThePermissionWindowComesFromConfigAndNeverGetsInvented(): void
+    {
+        $leer = static function (array $config): ?\DateInterval {
+            $contenedor = new \Milpa\Container\DIContainer();
+            $contenedor->registerService(\Milpa\Runtime\Config::class, new \Milpa\Runtime\Config($config));
+            $ops = new AgentOperations($contenedor);
+            $m = new \ReflectionMethod($ops, 'permissionWindow');
+
+            return $m->invoke($ops);
+        };
+
+        self::assertNull($leer([]), 'sin declarar: sin plazo');
+        self::assertNull($leer(['agent' => ['permissionWindow' => '']]), 'vacía: sin plazo');
+        self::assertNull($leer(['agent' => ['permissionWindow' => 'mañana']]), 'ilegible: sin plazo, no inventada');
+
+        $ventana = $leer(['agent' => ['permissionWindow' => 'PT8H']]);
+        self::assertInstanceOf(\DateInterval::class, $ventana);
+        self::assertSame(8, $ventana->h);
     }
 }

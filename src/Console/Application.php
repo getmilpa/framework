@@ -21,7 +21,10 @@ use Milpa\Console\CliRunner;
 use Milpa\Console\Rendering\JsonCliRenderer;
 use Milpa\Console\Rendering\PlainTextCliRenderer;
 use Milpa\Interfaces\Di\DIContainerInterface;
+use App\Operations\AgentOperations;
 use App\Tui\AgentScreen;
+use Milpa\Agent\Session;
+use Milpa\DevTools\Doctor\AppDoctor;
 use Milpa\Console\Tui\OperationsScreen;
 use Milpa\Live\Tui\StreamTerminal;
 use Milpa\Runtime\Kernel;
@@ -62,6 +65,9 @@ final class Application
     /** @var list<Operation>|null resueltos una vez por corrida */
     private ?array $operations = null;
 
+    /** Sobre cuál sesión corre `coa chat`. Se fija al despachar el comando. */
+    private string $sesionDelChatId = 'chat';
+
     public function __construct(private readonly string $root)
     {
     }
@@ -95,6 +101,16 @@ final class Application
             return $this->help();
         }
 
+        // ANTES DE BOOTEAR, y ésa es toda la razón de que viva aquí y no en `config/operations.php`.
+        // Una operación se despacha con el kernel arriba; si el grafo de capacidades no cierra, el
+        // kernel no arranca y NINGUNA operación corre — incluidas las de diagnóstico. Medido en esta
+        // misma app con una capacidad sin proveedor: `plugins:list`, `validate` y `test` caídas, y una
+        // línea de error como único dato. La herramienta que explica por qué no arranca no puede
+        // necesitar que arranque.
+        if ($comando === 'doctor') {
+            return $this->doctor();
+        }
+
         // Las dos pantallas. No son operaciones y no lo fingen: una operación se ejecuta con lo que
         // trae y contesta, y esto CONVERSA — captura teclas hasta que alguien sale. Que vivan aquí y
         // no en `config/operations.php` es la misma distinción que dejó fuera a `coa:run`.
@@ -108,7 +124,22 @@ final class Application
         }
 
         if ($comando === 'chat') {
-            return $this->pantalla(new AgentScreen($this->preguntarAlAgente(...), ...$this->tamano()));
+            // `coa chat [<id>]`. Con un default y no con un id inventado en cada arranque: un chat que
+            // olvida todo al cerrarse es justo lo que P16 vino a quitar, y pedir el id para lo más
+            // común obligaría a inventar uno antes de poder preguntar nada.
+            $this->sesionDelChatId = \is_string($argv[2] ?? null) && trim($argv[2]) !== ''
+                ? trim($argv[2])
+                : 'chat';
+
+            [$ancho, $alto] = $this->tamano();
+
+            return $this->pantalla(new AgentScreen(
+                $this->preguntarAlAgente(...),
+                $this->sesionDelChat(...),
+                $this->contestarEnElChat(...),
+                $ancho,
+                $alto,
+            ));
         }
 
         $operacion = $this->find($comando);
@@ -172,20 +203,66 @@ final class Application
      */
     private function preguntarAlAgente(string $prompt): array
     {
+        /** @var array{ok: bool, answer?: string, steps?: int, tools?: int, compacted?: bool, error?: string, hint?: string} $r */
+        $r = $this->correr('agent', ['prompt' => $prompt, 'session' => $this->sesionDelChatId])
+            ?? ['ok' => false, 'error' => 'esta app no declara la operación `agent`'];
+
+        return $r;
+    }
+
+    /**
+     * La sesión sobre la que corre el chat, releída en cada frame.
+     *
+     * Se relee y no se guarda porque cambia con cada vuelta: el plan que el agente acaba de escribir,
+     * el pendiente que acaba de cerrar, la pregunta que acaba de dejar abierta. Una copia guardada en
+     * la pantalla sería la de hace un rato, y una interfaz que enseña un estado viejo con cara de
+     * actual es peor que una que no lo enseña.
+     */
+    private function sesionDelChat(): ?Session
+    {
+        // El mismo almacén que resuelve la operación `agent`, por la misma vía: dos lugares que
+        // decidan dónde viven las sesiones son dos lugares donde pueden dejar de coincidir, y el día
+        // que lo hicieran el TUI pintaría una sesión que el agente no está escribiendo.
+        return (new AgentOperations($this->kernel()->container()))
+            ->sessionStore()
+            ?->load($this->sesionDelChatId);
+    }
+
+    /**
+     * @return array{ok: bool, granted?: string|null, error?: string}
+     */
+    private function contestarEnElChat(string $respuesta): array
+    {
+        /** @var array{ok: bool, granted?: string|null, error?: string} $r */
+        $r = $this->correr('agent:answer', ['session' => $this->sesionDelChatId, 'answer' => $respuesta])
+            ?? ['ok' => false, 'error' => 'esta app no declara la operación `agent:answer`'];
+
+        return $r;
+    }
+
+    /**
+     * Corre una operación por nombre, o `null` si esta app no la declara.
+     *
+     * @param array<string, mixed> $entrada
+     *
+     * @return array<string, mixed>|null
+     */
+    private function correr(string $nombre, array $entrada): ?array
+    {
         foreach ($this->all() as $operacion) {
-            if ($operacion->name !== 'agent') {
+            if ($operacion->name !== $nombre) {
                 continue;
             }
+
             $handler = $operacion->handler;
             if (\is_callable($handler)) {
-                /** @var array{ok: bool, answer?: string, steps?: int, tools?: int, error?: string, hint?: string} $r */
-                $r = $handler(['prompt' => $prompt]);
+                $r = $handler($entrada);
 
-                return $r;
+                return \is_array($r) ? $r : null;
             }
         }
 
-        return ['ok' => false, 'error' => 'esta app no declara la operación `agent`'];
+        return null;
     }
 
     /**
@@ -195,6 +272,73 @@ final class Application
      * realmente hay. Una ayuda escrita a mano es el primer archivo que miente cuando alguien instala
      * un plugin.
      */
+    /**
+     * Explica el estado arquitectónico de esta app SIN bootearla.
+     *
+     * Aquí sólo se RENDERIZA: el diagnóstico lo produce {@see AppDoctor} como valor, para que el mismo
+     * cálculo sirva a una terminal, a un TUI y a un agente sin que ninguno tenga que parsear lo que
+     * otro imprimió — y para que se pueda probar sin capturar salida.
+     */
+    private function doctor(): int
+    {
+        $declarados = $this->root . '/config/plugins.php';
+        if (!is_file($declarados)) {
+            $this->line('✗ no hay config/plugins.php — esta app no declara plugins');
+
+            return 1;
+        }
+
+        /** @var list<string> $clases */
+        $clases = require $declarados;
+        $reporte = (new AppDoctor())->diagnose($clases);
+
+        $this->line('coa doctor · ' . \count($clases) . ' plugin(s) declarado(s)');
+        $this->line('');
+
+        foreach ($reporte->unreadable as $ilegible) {
+            $this->line('  ✗ ' . $ilegible);
+        }
+
+        foreach ($reporte->plugins as $plugin) {
+            $provee = $plugin['provides'] === [] ? '—' : implode(', ', $plugin['provides']);
+            $pide = $plugin['requires'] === [] ? '—' : implode(', ', $plugin['requires']);
+            $this->line(sprintf('  %-22s provee: %-24s pide: %s', $plugin['name'], $provee, $pide));
+        }
+
+        $this->line('');
+
+        foreach ($reporte->missing as $falta) {
+            $id = \is_string($falta['id'] ?? null) ? $falta['id'] : (string) json_encode($falta);
+            $this->line("  ✗ nadie provee «{$id}»");
+        }
+
+        // Lo aprendible del resolver, tal cual viene: qué pasó, POR QUÉ, cómo se arregla y a qué
+        // lección lleva. Reformularlo aquí sería empeorarlo — y las `recommendedActions` son lo que un
+        // agente puede aplicar sin interpretar nada, que es la diferencia entre un error que se lee y
+        // uno que se opera.
+        foreach ($reporte->errors as $error) {
+            $this->line('');
+            $this->line('  ' . (string) $error['code'] . ': ' . (string) $error['message']);
+            $this->line('    por qué: ' . (string) $error['why']);
+            foreach ((array) $error['fixes'] as $arreglo) {
+                $this->line('    arregla: ' . (string) $arreglo);
+            }
+            foreach ((array) $error['recommendedActions'] as $accion) {
+                $this->line('    acción:  ' . (string) json_encode($accion));
+            }
+            $aprende = (array) $error['learn'];
+            $academia = $aprende['academy'] ?? null;
+            if (\is_array($academia) && \is_string($academia['es'] ?? null)) {
+                $this->line('    aprende: ' . $academia['es']);
+            }
+        }
+
+        $this->line('');
+        $this->line($reporte->ok() ? '✓ el grafo cierra' : '✗ esta app no va a arrancar así');
+
+        return $reporte->ok() ? 0 : 1;
+    }
+
     private function help(): int
     {
         $this->line('coa — el runtime de esta app. Cada comando es una operación declarada.');
@@ -209,6 +353,16 @@ final class Application
 
         $this->section('Consultan', $lee);
         $this->section('Cambian algo', $muta);
+
+        // `doctor`, `shell` y `chat` NO son operaciones y por eso la lista derivada no las trae: se
+        // enumeran aquí, que es la única excepción honesta a «la ayuda se deriva». Una capacidad que
+        // existe y no se anuncia no la encuentra nadie — y `doctor` es justamente la que hace falta
+        // cuando lo demás no corre.
+        $this->line('  Además:');
+        $this->line('    doctor           Explica el estado arquitectónico de la app SIN arrancarla');
+        $this->line('    shell            Todas las operaciones, en una pantalla');
+        $this->line('    chat [<sesion>]  El agente, en una sesión que sobrevive al proceso');
+        $this->line('');
 
         $this->line('  Una operación que exige firma se corre con --sign; --json cambia la salida a');
         $this->line('  documento de una línea, para un programa.');

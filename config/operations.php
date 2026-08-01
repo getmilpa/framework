@@ -31,6 +31,11 @@ return [
     // API key configurada dice qué falta en vez de fingir una respuesta.
     App\Operations\AgentOperations::class,
 
+    // El otro lado de la pausa: `agent:sessions`, `agent:show` y `agent:answer`. Van aparte de
+    // `AgentOperations` porque una sesión se pausa en un proceso y se contesta en otro — a veces desde
+    // otra superficie, a veces al día siguiente.
+    App\Operations\SessionOperations::class,
+
     // Los tokens con que alguien se identifica ante esta app por HTTP. Sólo terminal: quien puede
     // acuñar un token puede acuñar uno con todos los scopes.
     App\Operations\TokenOperations::class,
