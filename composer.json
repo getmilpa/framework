@@ -30,12 +30,6 @@
   },
   "require-dev": {
     "friendsofphp/php-cs-fixer": "^3.65",
-    "milpa/agent": "^0.2.1",
-    "milpa/ai-gateway": "^0.4.1",
-    "milpa/auth": "^0.3.3",
-    "milpa/data": "^0.2.1",
-    "milpa/devtools": "^0.9.5",
-    "milpa/mcp-server": "^0.4.1",
     "phpstan/phpstan": "^2.1",
     "phpunit/phpunit": "^11.5"
   },
