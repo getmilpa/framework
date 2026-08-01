@@ -46,6 +46,28 @@ jobs:
       # ignored when those directories are absent, as they are on a standalone checkout.
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
+
+      # LA CARA TINY, primero y sin nada encima: esto es lo que recibe quien crea una app. Si arranca
+      # y no anuncia lo que no puede hacer, el corte es real; si no, el README miente (ADR-0040).
+      - name: Tiny by default — boots, and offers only what it can do
+        run: |
+          php bin/coa list > /tmp/tiny.txt
+          grep -q 'capabilities' /tmp/tiny.txt || { echo "el catalogo no se ofrece"; exit 1; }
+          for op in 'agent:sessions' 'token:list' 'coa chat'; do
+            grep -q "$op" /tmp/tiny.txt && { echo "ofrece $op sin su paquete"; exit 1; }
+          done
+          php bin/coa capabilities | grep -q 'composer require milpa/agent' \
+            || { echo "no ensena el camino"; exit 1; }
+          echo "tiny ok: arranca, no promete lo que no puede, y dice como crecer"
+
+      # Y LA CARA COMPLETA. Los opt-in se instalan AQUI y no en require-dev: `create-project` instala
+      # los dev, asi que ponerlos ahi haria que toda app naciera con los seis puestos — el corte seria
+      # invisible justo donde importa.
+      - name: Install the opt-ins (for the tests that verify the other face)
+        run: |
+          composer require --dev --no-interaction --no-progress --prefer-dist \
+            milpa/agent:^0.2.1 milpa/ai-gateway:^0.4.1 milpa/auth:^0.3.3 \
+            milpa/data:^0.2.1 milpa/devtools:^0.9.5 milpa/mcp-server:^0.4.1
       - name: License gate (runtime deps must be MIT / BSD / Apache-2.0 / ISC)
         run: |
           composer licenses --no-dev --format=json | php -r '$d=json_decode(stream_get_contents(STDIN),true)?:[];$allow="~^(MIT|BSD-[0-9].*|Apache-2\\.0|ISC)$~";$bad=[];foreach(($d["dependencies"]??[]) as $n=>$i){$ls=(array)($i["license"]??[]);if($ls===[]){$bad[]="$n: (none declared)";continue;}foreach($ls as $l){if(!preg_match($allow,(string)$l))$bad[]="$n: $l";}}if($bad){fwrite(STDERR,"Disallowed dependency licenses (only MIT/BSD/Apache-2.0/ISC allowed):\n- ".implode("\n- ",$bad)."\n");exit(1);}echo "license gate ok: ".count($d["dependencies"]??[])." runtime deps, all MIT/BSD/Apache-2.0/ISC\n";'
