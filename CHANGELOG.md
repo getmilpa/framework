@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/getmilpa/framework/compare/v0.12.0...v0.13.0) (2026-08-02)
+
+
+### Features
+
+* agent.secondOpinion wires the second reader, with the floor underneath ([334f097](https://github.com/getmilpa/framework/commit/334f09706533523870c4910e33f3c74a9afbf15d))
+
 ## [0.12.0](https://github.com/getmilpa/framework/compare/v0.11.0...v0.12.0) (2026-08-02)
 
 
