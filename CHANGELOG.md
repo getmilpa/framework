@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/getmilpa/framework/compare/v0.11.0...v0.12.0) (2026-08-02)
+
+
+### Features
+
+* activity moves to its own status bar ([4cc54ab](https://github.com/getmilpa/framework/commit/4cc54abe5f43fdc58f0a191a2bb7979416c9bd43))
+
 ## [0.11.0](https://github.com/getmilpa/framework/compare/v0.10.2...v0.11.0) (2026-08-02)
 
 
