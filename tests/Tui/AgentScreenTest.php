@@ -487,6 +487,32 @@ final class AgentScreenTest extends TestCase
         self::assertSame($antes, \count($frames), 'lo que no es actividad no repinta esta pantalla');
     }
 
+    /**
+     * La actividad vive en su BARRA, y el renglón de entrada sigue siendo del humano.
+     *
+     * Compartirlos tenía un costo que no se ve hasta que pasa: mientras el agente trabajaba, lo que
+     * uno había escrito desaparecía de la pantalla. La barra dice en qué está el sistema; abajo sigue
+     * lo tuyo.
+     */
+    public function testActivityLivesInItsOwnBarAndThePromptStaysTheHumansd(): void
+    {
+        $pantalla = new AgentScreen(static fn (string $p): array => ['ok' => true, 'answer' => 'ok']);
+        $pantalla->loop()->dispatchKey('h');
+
+        $sinColor = static fn (string $s): string => (string) preg_replace('/\e\[[0-9;]*m/', '', $s);
+
+        self::assertStringContainsString('○ listo', $sinColor($pantalla->render()), 'en reposo lo dice');
+
+        $pantalla->broadcast('t', ['kind' => 'activity', 'activity' => [
+            'state' => 'tool', 'detail' => 'plugins_list', 'mutating' => true,
+        ]]);
+
+        $pintado = $sinColor($pantalla->render());
+        self::assertStringContainsString('◆ plugins_list', $pintado);
+        self::assertStringContainsString('toca algo', $pintado, 'y se distingue la que muta');
+        self::assertStringContainsString('› h', $pintado, 'lo escrito NO desaparece mientras trabaja');
+    }
+
     private ?AgentScreen $pantallaActual = null;
 
     private function render(string $prompt): string

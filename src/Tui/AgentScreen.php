@@ -17,6 +17,7 @@ namespace App\Tui;
 use Milpa\Agent\Session;
 use Milpa\Agent\TodoStatus;
 use Milpa\Live\Tui\NodeRenderers\BoxRenderer;
+use Milpa\Live\Tui\NodeRenderers\StatusBarRenderer;
 use Milpa\Live\Tui\NodeRenderers\TextRenderer;
 use App\Agent\SurfaceBroadcaster;
 use Milpa\Live\Contracts\Tui\TerminalInterface;
@@ -114,6 +115,9 @@ final class AgentScreen implements SurfaceBroadcaster
         $registry = new TuiNodeRendererRegistry();
         $registry->register(new TextRenderer());
         $registry->register(new BoxRenderer());
+        // La barra de estado viene del catálogo de componentes de `milpa/live-tui`, no de aquí: una
+        // pantalla que dibuja su propia barra es una barra que se ve distinta en cada pantalla.
+        $registry->register(new StatusBarRenderer());
 
         return $registry;
     }
@@ -377,8 +381,21 @@ final class AgentScreen implements SurfaceBroadcaster
             }
         }
 
+        // LA ACTIVIDAD SUBE A SU PROPIA BARRA, y el renglón de entrada deja de prestarse.
+        //
+        // Compartirlo tenía un costo que no se ve hasta que pasa: mientras el agente trabaja, lo que
+        // uno escribió desaparece de la pantalla. La barra dice en qué está el sistema; el renglón de
+        // abajo sigue siendo tuyo.
+        $hijos[] = new TuiNode('estado-barra', 'status-bar', props: [
+            'indicator' => $this->actividad !== null ? '◆' : '○',
+            'left' => $this->actividad ?? 'listo',
+            // A la derecha lo que costó la última vuelta, que es la otra pregunta que uno se hace
+            // mirando una pantalla: no sólo «¿está viva?», también «¿cuánto lleva?».
+            'right' => $this->ultimoCosto ?? '',
+        ]);
+
         $hijos[] = new TuiNode('prompt', 'text', props: [
-            'text' => $this->actividad !== null ? '  ' . $this->actividad : '› ' . $this->entrada . '▏',
+            'text' => '› ' . $this->entrada . '▏',
         ]);
         $hijos[] = new TuiNode('ayuda', 'text', props: [
             'text' => $pendiente !== null
