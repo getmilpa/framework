@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/getmilpa/framework/compare/v0.14.0...v0.14.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* a long answer blanked the `coa chat` screen ([61a22c6](https://github.com/getmilpa/framework/commit/61a22c665579a8e0ada224b416ff4a81b719a84d))
+
 ## [0.14.0](https://github.com/getmilpa/framework/compare/v0.13.0...v0.14.0) (2026-08-02)
 
 
