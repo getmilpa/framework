@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/getmilpa/framework/compare/v0.13.0...v0.14.0) (2026-08-02)
+
+
+### Features
+
+* the intent contract enforced in the session floor — and the adjudicated cannot adjudicate ([142a3a5](https://github.com/getmilpa/framework/commit/142a3a5867cd5a1a08be5db6bd7f25521d2eecd8))
+
 ## [0.13.0](https://github.com/getmilpa/framework/compare/v0.12.0...v0.13.0) (2026-08-02)
 
 
