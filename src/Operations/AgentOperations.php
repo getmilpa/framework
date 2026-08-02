@@ -21,6 +21,7 @@ use Milpa\Plugin\Runtime\MetadataGraphResolver;
 use Milpa\Resolver\Report\ResolutionReport;
 use Milpa\AiGateway\LlmService;
 use Milpa\AiGateway\McpClientService;
+use Milpa\AiGateway\SecondOpinionGate;
 use Milpa\AiGateway\ToolCallGate;
 use Milpa\AiGateway\ToolCallRecorder;
 use Milpa\Agent\AutonomyMode;
@@ -248,6 +249,23 @@ class AgentOperations implements CommandProvider
             }
         }
 
+        // ── EL SEGUNDO JUICIO, SI ESTA APP LO PIDE ──────────────────────────────────────────────
+        //
+        // `agent.secondOpinion` en `config/app.php` enlista las herramientas que ameritan un segundo
+        // lector. Sin esa lista no se envuelve nada y el comportamiento es el de hoy: esto se apila,
+        // no reemplaza. Q-P19-D está pre-registrada para medir si sirve, y puede refutarse.
+        //
+        // Va DESPUÉS de construir la compuerta de sesión y envolviéndola, nunca en su lugar: el piso
+        // sintáctico decide primero y su `no` no se apela. Un verificador que pudiera revertirlo sería
+        // una vía de escape con forma de mejora.
+        $segundas = $this->segundaOpinion();
+        if ($compuerta !== null && $segundas !== [] && class_exists(SecondOpinionGate::class)) {
+            $juez = $this->llm();
+            if ($juez !== null) {
+                $compuerta = new SecondOpinionGate($compuerta, $juez, $prompt, $segundas);
+            }
+        }
+
         $registry = $this->toolsOfThisApp($contabilidad);
         if ($registry === null) {
             return ['ok' => false, 'error' => 'esta app no expuso ninguna operación como herramienta'];
@@ -413,6 +431,45 @@ class AgentOperations implements CommandProvider
             // sin plazo. Adivinar aquí sería matar sesiones por un typo en un archivo de config.
             return null;
         }
+    }
+
+    /**
+     * Las herramientas que esta app quiere que un segundo lector revise.
+     *
+     * Lista y no booleano: preguntarle al modelo por cada lectura duplicaría las peticiones para
+     * confirmar lo obvio, y ese costo se paga en cada corrida. Cuáles ameritan revisión es una
+     * decisión de la app, no de este archivo.
+     *
+     * @return list<string>
+     */
+    private function segundaOpinion(): array
+    {
+        $config = $this->container->has(Config::class) ? $this->container->get(Config::class) : null;
+        $declarado = $config instanceof Config ? $config->get('agent.secondOpinion') : null;
+
+        return \is_array($declarado)
+            ? array_values(array_filter($declarado, static fn ($x): bool => \is_string($x)))
+            : [];
+    }
+
+    /** El mismo modelo que corre al agente, para el que lo juzga. */
+    private function llm(): ?LlmService
+    {
+        $credencial = $this->credential();
+        if ($credencial === null || !class_exists(LlmService::class)) {
+            return null;
+        }
+
+        [$proveedor, $llave, $modelo] = $credencial;
+
+        return new LlmService(
+            $llave,
+            $modelo,
+            $proveedor,
+            new NullLogger(),
+            baseUrl: $this->baseUrl(),
+            extraHeaders: $this->extraHeaders(),
+        );
     }
 
     protected function sessions(): ?SessionStore

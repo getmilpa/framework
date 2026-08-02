@@ -181,4 +181,85 @@ final class OperationsTest extends TestCase
             @rmdir($raiz);
         }
     }
+
+    /**
+     * Sin `agent.secondOpinion`, no se envuelve nada: el comportamiento es el de hoy.
+     *
+     * El segundo juicio se APILA, no reemplaza — y una app que no lo pidió no paga una petición extra
+     * al modelo por cada llamada.
+     */
+    public function testWithoutTheConfigKeyNoSecondOpinionIsWired(): void
+    {
+        $ops = new AgentOperations(new DIContainer());
+        $m = new \ReflectionMethod($ops, 'segundaOpinion');
+        $m->setAccessible(true);
+
+        self::assertSame([], $m->invoke($ops));
+
+        // Y con la clave puesta, sale la lista — filtrando lo que no es un nombre de herramienta.
+        $contenedor = new DIContainer();
+        $contenedor->registerService(\Milpa\Runtime\Config::class, new \Milpa\Runtime\Config([
+            'agent' => ['secondOpinion' => ['plugins_disable', 42, 'plugins_lock']],
+        ]));
+
+        $conClave = new AgentOperations($contenedor);
+        $m2 = new \ReflectionMethod($conClave, 'segundaOpinion');
+        $m2->setAccessible(true);
+
+        self::assertSame(['plugins_disable', 'plugins_lock'], $m2->invoke($conClave));
+    }
+
+    /**
+     * El juez es el MISMO modelo que corre al agente, no uno aparte.
+     *
+     * Dos modelos serían dos configuraciones que se separan sin que nadie lo note, y el día que se
+     * separaran el verificador estaría juzgando con un criterio que nadie eligió. Sin credencial no
+     * hay juez, y sin juez no se envuelve nada — el comportamiento vuelve a ser el de hoy.
+     */
+    public function testTheJudgeIsTheSameModelThatRunsTheAgent(): void
+    {
+        $contenedor = new DIContainer();
+        $contenedor->registerService(\Milpa\Runtime\Config::class, new \Milpa\Runtime\Config([
+            'agent' => ['baseUrl' => 'https://llama.local', 'model' => 'qwen3-coder:30b'],
+        ]));
+
+        $ops = new AgentOperations($contenedor);
+        $m = new \ReflectionMethod($ops, 'llm');
+        $m->setAccessible(true);
+
+        self::assertInstanceOf(\Milpa\AiGateway\LlmService::class, $m->invoke($ops));
+    }
+
+    /**
+     * Y el piso sigue debajo: `SecondOpinionGate` recibe la compuerta de sesión, no la sustituye.
+     *
+     * Es el control 3 de Q-P19-D, y es la propiedad que hace que esto siga siendo una compuerta: a un
+     * modelo se le puede persuadir, así que un verificador que pudiera revertir un `no` sintáctico
+     * sería una vía de escape con forma de mejora.
+     */
+    public function testTheSyntacticFloorStaysUnderneath(): void
+    {
+        $piso = new class () implements \Milpa\AiGateway\ToolCallGate {
+            public function refuse(string $tool, array $arguments): ?string
+            {
+                return 'el piso dice que no';
+            }
+        };
+
+        $modelo = new class () implements \Milpa\ToolRuntime\Contracts\LlmServiceInterface {
+            public int $llamadas = 0;
+
+            public function generateResponse(string $prompt, array $tools = [], array $messages = [], int $maxTokens = 4096): array
+            {
+                ++$this->llamadas;
+
+                return ['content' => 'ALLOW'];
+            }
+        };
+
+        $puerta = new \Milpa\AiGateway\SecondOpinionGate($piso, $modelo, 'lo que sea', ['plugins_disable']);
+
+        self::assertSame('el piso dice que no', $puerta->refuse('plugins_disable', []));
+        self::assertSame(0, $modelo->llamadas, 'ni siquiera se le pregunta al modelo lo que el piso ya negó');
+    }
 }
