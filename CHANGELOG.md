@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/getmilpa/framework/compare/v0.10.2...v0.11.0) (2026-08-02)
+
+
+### Features
+
+* the agent screen says what it is doing, through the same bridge as any surface ([44a19a1](https://github.com/getmilpa/framework/commit/44a19a13dd75efbd3da61e4961fef98241e5873d))
+
 ## [0.10.2](https://github.com/getmilpa/framework/compare/v0.10.1...v0.10.2) (2026-08-01)
 
 
