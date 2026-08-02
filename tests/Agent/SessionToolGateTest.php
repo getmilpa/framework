@@ -164,4 +164,180 @@ final class SessionToolGateTest extends TestCase
 
         self::assertNull($almacen->load('s1')?->question?->expiresAt);
     }
+
+    // ── EL CONTRATO DE INTENCIÓN (ADR-0044) ─────────────────────────────────────────────────────
+
+    /** @return list<Operation> */
+    private function operacionesConContrato(): array
+    {
+        return [
+            new Operation(
+                'plugins.disable',
+                'Apaga',
+                static fn (array $i): array => ['ok' => true],
+                inputSchema: ['type' => 'object', 'properties' => []],
+                mutating: true,
+                namedTarget: 'name',
+            ),
+        ];
+    }
+
+    private function compuertaConPeticion(SessionStore $almacen, string $id, string $peticion, AutonomyMode $modo = AutonomyMode::Auto): SessionToolGate
+    {
+        $almacen->start($id, $peticion, $modo);
+        $sesion = $almacen->load($id);
+        self::assertNotNull($sesion);
+
+        return new SessionToolGate($almacen, $sesion, $this->operacionesConContrato(), petition: $peticion);
+    }
+
+    /**
+     * Un objetivo que la petición no nombra NO se ejecuta: se pregunta, con todo adentro.
+     *
+     * Es la autoridad que Q-P19-K midió como inexistente — question_asked salió 0 de 160 mientras
+     * tres corridas mataban un plugin que nadie nombró. La pregunta lleva la operación y los
+     * argumentos porque quien conteste «sí» tiene que saber exactamente qué autoriza.
+     */
+    public function testATargetThePetitionDoesNotNameBecomesAFormalQuestion(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $compuerta = $this->compuertaConPeticion($almacen, 's1', 'Quita el plugin viejo.');
+
+        self::assertNotNull($compuerta->refuse('plugins_disable', ['name' => 'HelloPlugin']));
+
+        $pregunta = $almacen->load('s1')?->question;
+        self::assertNotNull($pregunta, 'la duda tiene que PAUSAR, no narrar');
+        self::assertSame('target_not_named', $pregunta->reason, 'el motivo viaja como código, no como prosa');
+        self::assertStringContainsString('HelloPlugin', $pregunta->question);
+        self::assertNotNull($pregunta->why);
+        self::assertStringContainsString('plugins.disable', $pregunta->why, 'la operación va adentro');
+        self::assertStringContainsString('HelloPlugin', $pregunta->why, 'y los argumentos también');
+    }
+
+    /** El objetivo nombrado pasa — sin distinguir mayúsculas, porque el humano no teclea camelCase. */
+    public function testANamedTargetPassesWithoutAQuestion(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $compuerta = $this->compuertaConPeticion($almacen, 's1', 'Deshabilita el plugin helloplugin, por favor.');
+
+        self::assertNull($compuerta->refuse('plugins_disable', ['name' => 'HelloPlugin']));
+        self::assertNull($almacen->load('s1')?->question);
+    }
+
+    /**
+     * `auto` NO exime el contrato: exime pedir permiso, no entender qué se pidió.
+     *
+     * Es la cláusula 3 de ADR-0044, y es la diferencia entera con la política de permisos: en las
+     * 160 corridas de K el modo auto dejó pasar toda mutación, y por eso la verificación de
+     * intención vive ANTES de la política y no adentro.
+     */
+    public function testAutoModeDoesNotWaiveTheIntentContract(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $compuerta = $this->compuertaConPeticion($almacen, 's1', 'Limpia lo que no se usa.', AutonomyMode::Auto);
+
+        self::assertNotNull($compuerta->refuse('plugins_disable', ['name' => 'OperationsHttp']));
+        self::assertSame('target_not_named', $almacen->load('s1')?->question?->reason);
+    }
+
+    /** Una operación sin contrato se comporta como siempre — declarar es opt-in por operación. */
+    public function testAnOperationWithoutAContractIsUntouched(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('s1', 'Limpia lo que no se usa.', AutonomyMode::Auto);
+        $sesion = $almacen->load('s1');
+        self::assertNotNull($sesion);
+
+        // `make` muta y NO declara namedTarget: en auto pasa, como pasaba.
+        $compuerta = new SessionToolGate($almacen, $sesion, $this->operaciones(), petition: 'Limpia lo que no se usa.');
+
+        self::assertNull($compuerta->refuse('make', ['name' => 'Cosa']));
+    }
+
+    /** Sin petición contra qué comparar, el contrato no opina — sesiones viejas siguen corriendo. */
+    public function testWithoutAPetitionTheContractStaysQuiet(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('s1', 'x', AutonomyMode::Auto);
+        $sesion = $almacen->load('s1');
+        self::assertNotNull($sesion);
+
+        $compuerta = new SessionToolGate($almacen, $sesion, $this->operacionesConContrato());
+
+        self::assertNull($compuerta->refuse('plugins_disable', ['name' => 'HelloPlugin']));
+    }
+
+    /**
+     * EL CICLO CIERRA: la confirmación del humano ES el nombramiento.
+     *
+     * Pregunta → respuesta «sí» → la re-propuesta pasa. Sin esto, la misma llamada volvería a pausar
+     * —la petición sigue sin nombrar al objetivo— y una pregunta que contestarla no destraba nada es
+     * teatro con acta. La confirmación se lee del hecho (reason + why heredados a la decisión), nunca
+     * del texto de la pregunta.
+     */
+    public function testAYesFromTheHumanNamesTheTargetAndTheRetryPasses(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $compuerta = $this->compuertaConPeticion($almacen, 's1', 'Quita el plugin viejo.');
+
+        // Primera propuesta: pausa.
+        self::assertNotNull($compuerta->refuse('plugins_disable', ['name' => 'HelloPlugin']));
+        $pregunta = $almacen->load('s1')?->question;
+        self::assertNotNull($pregunta);
+
+        // El humano confirma.
+        $almacen->answer('s1', $pregunta->id, 'sí');
+
+        // La re-propuesta, sobre la sesión YA CONFIRMADA, pasa el contrato.
+        $confirmada = $almacen->load('s1');
+        self::assertNotNull($confirmada);
+        $compuerta2 = new SessionToolGate($almacen, $confirmada, $this->operacionesConContrato(), petition: 'Quita el plugin viejo.');
+
+        self::assertNull($compuerta2->refuse('plugins_disable', ['name' => 'HelloPlugin']));
+    }
+
+    /**
+     * Un «no» NO nombra nada: la re-propuesta del mismo objetivo vuelve a pausar.
+     *
+     * Si el humano dijo que no y el actor insiste, lo que corresponde es volver a preguntar — no
+     * dejar pasar por cansancio ni negar para siempre por una respuesta que era sobre ESA propuesta.
+     */
+    public function testANoDoesNotNameAnythingAndTheRetryPausesAgain(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $compuerta = $this->compuertaConPeticion($almacen, 's1', 'Quita el plugin viejo.');
+
+        self::assertNotNull($compuerta->refuse('plugins_disable', ['name' => 'HelloPlugin']));
+        $pregunta = $almacen->load('s1')?->question;
+        self::assertNotNull($pregunta);
+
+        $almacen->answer('s1', $pregunta->id, 'no');
+
+        $despues = $almacen->load('s1');
+        self::assertNotNull($despues);
+        $compuerta2 = new SessionToolGate($almacen, $despues, $this->operacionesConContrato(), petition: 'Quita el plugin viejo.');
+
+        self::assertNotNull($compuerta2->refuse('plugins_disable', ['name' => 'HelloPlugin']));
+    }
+
+    /** La confirmación es POR OBJETIVO: el «sí» a HelloPlugin no nombra a OperationsHttp. */
+    public function testAConfirmationNamesOneTargetNotAllOfThem(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $compuerta = $this->compuertaConPeticion($almacen, 's1', 'Quita el plugin viejo.');
+
+        self::assertNotNull($compuerta->refuse('plugins_disable', ['name' => 'HelloPlugin']));
+        $pregunta = $almacen->load('s1')?->question;
+        self::assertNotNull($pregunta);
+        $almacen->answer('s1', $pregunta->id, 'sí');
+
+        $despues = $almacen->load('s1');
+        self::assertNotNull($despues);
+        $compuerta2 = new SessionToolGate($almacen, $despues, $this->operacionesConContrato(), petition: 'Quita el plugin viejo.');
+
+        self::assertNotNull(
+            $compuerta2->refuse('plugins_disable', ['name' => 'OperationsHttp']),
+            'el sí fue sobre HelloPlugin — otro objetivo es otra pregunta',
+        );
+    }
 }

@@ -60,6 +60,11 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
         // `null` es sin plazo, que es lo que había; la decide el host en `agent.permissionWindow`
         // porque es una política de producto y no una constante de este archivo.
         private readonly ?\DateInterval $permissionWindow = null,
+        // LA PETICIÓN, tal cual la escribió el humano. Es contra esto que se verifica el contrato de
+        // intención (ADR-0044): sin la petición no hay contra qué comparar un objetivo, y una cadena
+        // vacía —lo que había— simplemente desactiva la verificación, que es el comportamiento de
+        // toda sesión anterior a que esto existiera.
+        private readonly string $petition = '',
     ) {
     }
 
@@ -88,6 +93,23 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
             return null;
         }
 
+        // EL CONTRATO DE INTENCIÓN VA ANTES DE LA POLÍTICA, y ningún modo lo exime (ADR-0044).
+        //
+        // `auto` exime pedir PERMISO; no exime entender qué se pidió — igual que la firma. Por eso
+        // esta verificación no pasa por `SessionPolicy`: la política juzga una intención concreta, y
+        // lo que aquí se decide es si ya existe una. El orden también importa para `ask`: preguntar
+        // «¿autorizas X sobre Y?» presupone que Y es el objetivo correcto, que es justo lo que está
+        // en duda.
+        //
+        // La verificación es MECÁNICA a propósito — ¿el valor aparece en la petición, sin distinguir
+        // mayúsculas? — sin ningún modelo en el circuito: el piso es la autoridad no-persuadible y
+        // así se queda. Sus falsos positivos («apaga el plugin de hola» no nombra HelloPlugin)
+        // producen una pregunta contestable, no un bloqueo, y su tasa es lo que Q-P19-M mide.
+        $duda = $this->intentUnderdetermined($operacion, $arguments);
+        if ($duda !== null) {
+            return $this->pause($duda);
+        }
+
         $decision = $this->policy->decide(
             $this->session,
             $operacion->name,
@@ -104,6 +126,77 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
                 $this->policy->signatureQuestion($operacion->name, $arguments),
             ),
         };
+    }
+
+    /**
+     * La pregunta que el contrato de intención exige hacer, o `null` si la intención alcanza.
+     *
+     * Tres salidas en `null`, y las tres son deliberadas: la operación no declara contrato (casi
+     * todas), no hay petición contra qué comparar (sesiones viejas), o el argumento declarado no
+     * viene en la llamada — eso lo rechaza la validación de schema con su propio error, y duplicar
+     * ese juicio aquí sería el segundo comparador que esta casa ya pagó cuatro veces (Q-P17).
+     *
+     * La pregunta lleva la operación y los argumentos ADENTRO — es la primera aplicación de la
+     * restricción que Q-P19-K dejó: toda aprobación necesita tanta evidencia como una negativa, y
+     * quien conteste «sí» tiene que poder saber exactamente qué está autorizando.
+     *
+     * @param array<string, mixed> $arguments
+     */
+    private function intentUnderdetermined(Operation $operacion, array $arguments): ?\Milpa\Agent\PendingQuestion
+    {
+        $campo = $operacion->namedTarget;
+        if ($campo === null || $this->petition === '') {
+            return null;
+        }
+
+        $valor = $arguments[$campo] ?? null;
+        if (!\is_string($valor) || trim($valor) === '') {
+            return null;
+        }
+
+        if (mb_stripos($this->petition, trim($valor)) !== false) {
+            return null;
+        }
+
+        // ── EL CICLO SE CIERRA: Pregunta → Nueva intención ──────────────────────────────────────
+        //
+        // Si el humano YA confirmó esta operación sobre este objetivo —contestó «sí» a la pregunta
+        // que este mismo contrato produjo— el objetivo está nombrado: por el humano, en el stream,
+        // con principal. Sin esto, la re-propuesta tras la respuesta volvería a pausar la misma
+        // llamada (la petición sigue sin nombrar al objetivo), y una pregunta que contestarla no
+        // destraba nada es teatro con acta.
+        //
+        // Se lee del hecho, no de la prosa: la decisión hereda `reason` y `why` de la pregunta, así
+        // que «¿ya se confirmó plugins.disable sobre HelloPlugin?» se contesta comparando código y
+        // JSON — nunca el texto de la pregunta, que se redacta y cambia.
+        foreach ($this->session->decisions as $decision) {
+            if (($decision['reason'] ?? null) !== 'target_not_named') {
+                continue;
+            }
+            if ($decision['answer'] !== 'sí') {
+                continue;
+            }
+            $why = json_decode(\is_string($decision['why'] ?? null) ? $decision['why'] : '', true);
+            if (!\is_array($why) || ($why['operation'] ?? null) !== $operacion->name) {
+                continue;
+            }
+            $confirmado = \is_array($why['arguments'] ?? null) ? ($why['arguments'][$campo] ?? null) : null;
+            if ($confirmado === trim($valor)) {
+                return null;
+            }
+        }
+
+        return new \Milpa\Agent\PendingQuestion(
+            id: 'intent-' . substr(sha1($operacion->name . '|' . $valor), 0, 12),
+            question: "La petición no nombra a «{$valor}». ¿Confirmas {$operacion->name} sobre «{$valor}»?",
+            options: ['sí', 'no'],
+            why: json_encode(
+                ['operation' => $operacion->name, 'arguments' => $arguments],
+                \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES,
+            ) ?: null,
+            expiresAt: $this->vence()?->format(\DateTimeInterface::ATOM),
+            reason: 'target_not_named',
+        );
     }
 
     /** Cuándo vence la pregunta que se está por hacer, o `null` si el host no puso plazo. */

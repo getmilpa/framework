@@ -18,10 +18,10 @@
     }
   ],
   "require": {
-    "milpa/command": "^0.4",
+    "milpa/command": "^0.5",
     "milpa/console": "^0.7",
     "milpa/core": "^0.6.2 || ^0.7",
-    "milpa/plugin": "^0.7",
+    "milpa/plugin": "^0.8",
     "milpa/runtime": "^0.7.1",
     "milpa/tool-runtime": "^0.9",
     "nyholm/psr7": "^1.8",

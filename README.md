@@ -136,6 +136,30 @@ billing them.
 It is a **terminal** operation only. An agent running over HTTP with the server's credentials is a
 different decision, and this template does not take it for you.
 
+### The agent is governed, and 0.13 closed the loop that measurement demanded
+
+Three authorities sit between the model and your app, each answering exactly one question:
+
+- **The floor** (`SessionPolicy`): does this need permission or a signature? No autonomy mode
+  skips a signature.
+- **The intent contract** (ADR-0044): does a concrete operation even exist yet? An operation that
+  declares `namedTarget` gets enforced **before** the permission policy — `auto` waives asking
+  permission, not understanding what was asked. An unnamed target pauses the session with a formal
+  question that carries the operation and its arguments; the human's *yes* names that target and
+  only that target.
+- **The second opinion** (`agent.secondOpinion` in `config/app.php`): does this concrete call go
+  beyond what was asked? Its denial removes the option from the session's table and the loop
+  continues with a different world.
+
+And one rule that keeps all of it honest: **operations that adjudicate sessions are not tools of
+the adjudicated**. `agent:answer` and `agent:mode` exist so a human governs the agent — they are
+filtered out of the agent's own catalogue, because an agent that can answer its own pause or raise
+its own autonomy is not governed; it is narrating governance.
+
+When `agent.conditionalCatalog` is on, the run's result also says what the classifier decided
+(`classifier: reads|changes|no-verdict|unreachable`) — the same reason `compacted` is reported:
+anything that silently changes what the model sees, gets said.
+
 ## Serving operations over HTTP
 
 The fourth surface. `config/http.php` names which operations get a route — and it is **empty**:

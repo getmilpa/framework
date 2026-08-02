@@ -231,6 +231,36 @@ final class OperationsTest extends TestCase
     }
 
     /**
+     * La alternativa observable la declara la APP, y se filtra lo que no es un par de nombres.
+     *
+     * Q-P19-D midió que una negativa sin «qué sí» apaga al agente: 0 de 32 corridas volvieron a llamar
+     * una herramienta. Pedirle al modelo que invente la alternativa sería mover la adivinación de
+     * lugar, no quitarla.
+     */
+    public function testTheObservableAlternativeIsDeclaredByTheApp(): void
+    {
+        $contenedor = new DIContainer();
+        $contenedor->registerService(\Milpa\Runtime\Config::class, new \Milpa\Runtime\Config([
+            'agent' => ['observableAlternatives' => [
+                'plugins_disable' => 'plugins_simulate',
+                'roto' => 42,
+            ]],
+        ]));
+
+        $ops = new AgentOperations($contenedor);
+        $m = new \ReflectionMethod($ops, 'alternativasObservables');
+        $m->setAccessible(true);
+
+        self::assertSame(['plugins_disable' => 'plugins_simulate'], $m->invoke($ops));
+
+        // Y sin la clave, no hay alternativa: la negativa vuelve a ser la de antes.
+        $vacio = new AgentOperations(new DIContainer());
+        $m2 = new \ReflectionMethod($vacio, 'alternativasObservables');
+        $m2->setAccessible(true);
+        self::assertSame([], $m2->invoke($vacio));
+    }
+
+    /**
      * Y el piso sigue debajo: `SecondOpinionGate` recibe la compuerta de sesión, no la sustituye.
      *
      * Es el control 3 de Q-P19-D, y es la propiedad que hace que esto siga siendo una compuerta: a un
@@ -261,5 +291,57 @@ final class OperationsTest extends TestCase
 
         self::assertSame('el piso dice que no', $puerta->refuse('plugins_disable', []));
         self::assertSame(0, $modelo->llamadas, 'ni siquiera se le pregunta al modelo lo que el piso ya negó');
+    }
+
+    /**
+     * ENVOLVER LA COMPUERTA NO PUEDE APAGAR EL REGISTRO DE HERRAMIENTAS.
+     *
+     * `McpClientService` deducía la grabadora del gate final. `SessionToolGate` juega los dos papeles
+     * —juzga y registra—; `SecondOpinionGate` sólo juzga. Así que declarar `agent.secondOpinion` hacía
+     * que la sesión dejara de apendar `session.tool_called`, en silencio.
+     *
+     * Por qué importa más que un evento perdido: el stream es la evidencia con la que este programa
+     * distingue «observó» de «contestó sin mirar». Con el registro apagado, una corrida que usó tres
+     * herramientas se ve idéntica a una que no usó ninguna — y ese cero se lee como hallazgo. Medido en
+     * una corrida real el 2026-08-02: 8 pasos, datos de tres herramientas, cero llamadas en el stream.
+     */
+    public function testWrappingTheGateDoesNotSilenceTheToolRecorder(): void
+    {
+        $registro = [];
+        $piso = new class ($registro) implements \Milpa\AiGateway\ToolCallGate, \Milpa\AiGateway\ToolCallRecorder {
+            /** @param list<string> $registro */
+            public function __construct(public array &$registro)
+            {
+            }
+
+            public function refuse(string $tool, array $arguments): ?string
+            {
+                return null;
+            }
+
+            public function recorded(string $tool, array $arguments, string $result, bool $ok): void
+            {
+                $this->registro[] = $tool;
+            }
+        };
+
+        $modelo = new class () implements \Milpa\ToolRuntime\Contracts\LlmServiceInterface {
+            public function generateResponse(string $prompt, array $tools = [], array $messages = [], int $maxTokens = 4096): array
+            {
+                return ['content' => 'ALLOW'];
+            }
+        };
+
+        // La compuerta que llega al cliente es el envoltorio, que NO es grabadora.
+        $envuelta = new \Milpa\AiGateway\SecondOpinionGate($piso, $modelo, 'x', ['plugins_disable']);
+        self::assertNotInstanceOf(\Milpa\AiGateway\ToolCallRecorder::class, $envuelta);
+
+        $registry = new \Milpa\ToolRuntime\ToolRegistry(new \Psr\Log\NullLogger());
+        $registry->register('plugins_simulate', 'simula', [], static fn (): array => ['ok' => true]);
+
+        // El papel de registrar viaja aparte, tomado del piso antes de envolver.
+        (new \Milpa\AiGateway\McpClientService($registry, $envuelta, $piso))->callTool('plugins_simulate', []);
+
+        self::assertSame(['plugins_simulate'], $piso->registro, 'el envoltorio no puede quitarle al piso el papel de registrar');
     }
 }

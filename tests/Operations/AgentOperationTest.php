@@ -100,6 +100,8 @@ final class AgentOperationTest extends TestCase
                 callable $onStep,
                 array $history = [],
                 ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\AiGateway\OptionTable $mesa = null,
+                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
             ): string {
                 $onStep();
                 $onStep();
@@ -180,6 +182,8 @@ final class AgentOperationTest extends TestCase
                 callable $onStep,
                 array $history = [],
                 ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\AiGateway\OptionTable $mesa = null,
+                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
             ): string {
                 static::$visto = ['proveedor' => $proveedor, 'llave' => $llave, 'modelo' => $modelo];
 
@@ -312,6 +316,8 @@ final class AgentOperationTest extends TestCase
                     callable $onStep,
                     array $history = [],
                     ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                    ?\Milpa\AiGateway\OptionTable $mesa = null,
+                    ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
                 ): string {
                     static::$visto = ['proveedor' => $proveedor, 'llave' => $llave, 'modelo' => $modelo];
 
@@ -504,6 +510,8 @@ final class AgentOperationTest extends TestCase
                 callable $onStep,
                 array $history = [],
                 ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\AiGateway\OptionTable $mesa = null,
+                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
             ): string {
                 $this->historialVisto = $history;
                 $onStep();
@@ -773,6 +781,8 @@ final class AgentOperationTest extends TestCase
                 callable $onStep,
                 array $history = [],
                 ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\AiGateway\OptionTable $mesa = null,
+                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
             ): string {
                 $this->historialVisto = $history;
                 $onStep();
