@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Agent;
 
+use App\Support\ContratoInstalado;
 use Milpa\Agent\SessionStore;
 use Milpa\AiGateway\OptionTable;
 
@@ -76,7 +77,10 @@ final readonly class SessionOptionTable implements OptionTable
     {
         $sesion = $this->sessions->load($this->sessionId);
 
-        return $sesion === null ? [] : $sesion->removedOptions;
+        // Leída a través del contrato y no directo: `Session::$removedOptions` nació el 2026-08-01 y
+        // este `src/` convive con el vendor que su dueño tenga. Sin esto, una sesión de un `agent`
+        // anterior devuelve null contra un `: array` — TypeError, no aviso.
+        return $sesion === null ? [] : ContratoInstalado::listaDeCadenas($sesion, 'removedOptions');
     }
 
     /**

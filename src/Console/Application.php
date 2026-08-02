@@ -70,6 +70,122 @@ final class Application
     /** Sobre cuál sesión corre `coa chat`. Se fija al despachar el comando. */
     private string $sesionDelChatId = 'chat';
 
+    /**
+     * El id de una sesión nueva: la fecha y un sufijo corto.
+     *
+     * Legible a propósito —`chat-0802-a3f1`— porque quien la va a retomar la elige de una lista y
+     * no de un hash: un identificador que nadie puede leer obliga a abrir cada sesión para saber
+     * cuál era. La fecha ordena; el sufijo evita el choque de dos chats del mismo día.
+     */
+    private function sesionNueva(): string
+    {
+        return 'chat-' . date('md') . '-' . substr(bin2hex(random_bytes(3)), 0, 4);
+    }
+
+    /**
+     * La última sesión que se tocó, o `null` si esta app no tiene ninguna.
+     *
+     * «Última» es por el evento más reciente y no por el nombre: una sesión que se retomó ayer está
+     * más viva que otra que se creó hoy y nadie usó. El almacén sabe el orden porque el stream lo
+     * sabe — preguntarle es más barato que recordarlo aparte, y no puede desincronizarse.
+     */
+    private function ultimaSesion(): ?string
+    {
+        $almacen = $this->almacenDeSesiones();
+        if ($almacen === null) {
+            return null;
+        }
+
+        $ultima = null;
+        $masReciente = -1;
+        foreach ($almacen->ids() as $id) {
+            $sesion = $almacen->load($id);
+            if ($sesion === null) {
+                continue;
+            }
+            $seq = $sesion->turns === [] ? 0 : (int) ($sesion->turns[\count($sesion->turns) - 1]['seq'] ?? 0);
+            if ($seq >= $masReciente) {
+                $masReciente = $seq;
+                $ultima = $id;
+            }
+        }
+
+        return $ultima;
+    }
+
+    /**
+     * Con qué modelo se va a hablar, dicho como lo declara el entorno.
+     *
+     * `proveedor:modelo` y no sólo el modelo: `qwen3-coder:30b` en un endpoint local y el mismo
+     * nombre contra un proxy remoto no son la misma cosa para quien va a pagar la corrida.
+     */
+    private function modeloDelAgente(): string
+    {
+        $base = getenv('MILPA_AGENT_BASE_URL');
+        $modelo = getenv('MILPA_AGENT_MODEL');
+
+        if (\is_string($base) && $base !== '') {
+            return 'local · ' . (\is_string($modelo) && $modelo !== '' ? $modelo : 'sin MILPA_AGENT_MODEL');
+        }
+        if (getenv('ANTHROPIC_API_KEY')) {
+            return 'anthropic · ' . (\is_string($modelo) && $modelo !== '' ? $modelo : 'default del proveedor');
+        }
+        if (getenv('OPENAI_API_KEY')) {
+            return 'openai · ' . (\is_string($modelo) && $modelo !== '' ? $modelo : 'default del proveedor');
+        }
+
+        return 'sin credencial — el agente no va a poder correr';
+    }
+
+    /** El almacén de sesiones de esta app, o `null` si el paquete no está. */
+    private function almacenDeSesiones(): ?\Milpa\Agent\SessionStore
+    {
+        if (!class_exists(\Milpa\Agent\SessionStore::class)) {
+            return null;
+        }
+
+        $agente = new AgentOperations($this->kernel()->container());
+        $m = new \ReflectionMethod($agente, 'sessions');
+
+        $almacen = $m->invoke($agente);
+
+        return $almacen instanceof \Milpa\Agent\SessionStore ? $almacen : null;
+    }
+
+    /**
+     * Las sesiones de esta app, de la más reciente a la más vieja, para que `/sessions` las muestre.
+     *
+     * @return list<array{id: string, goal: string, turns: int, state: string, seq: int}>
+     */
+    private function sesionesParaElegir(): array
+    {
+        $almacen = $this->almacenDeSesiones();
+        if ($almacen === null) {
+            return [];
+        }
+
+        $filas = [];
+        foreach ($almacen->ids() as $id) {
+            $sesion = $almacen->load($id);
+            if ($sesion === null) {
+                continue;
+            }
+            $filas[] = [
+                'id' => $id,
+                'goal' => $sesion->goal,
+                'turns' => \count($sesion->turns),
+                'state' => $sesion->endedBecause !== null
+                    ? 'terminada'
+                    : ($sesion->question !== null ? 'espera respuesta' : 'viva'),
+                'seq' => $sesion->turns === [] ? 0 : (int) ($sesion->turns[\count($sesion->turns) - 1]['seq'] ?? 0),
+            ];
+        }
+
+        usort($filas, static fn (array $a, array $b): int => $b['seq'] <=> $a['seq']);
+
+        return $filas;
+    }
+
     public function __construct(private readonly string $root)
     {
     }
@@ -143,12 +259,25 @@ final class Application
         }
 
         if ($comando === 'chat') {
-            // `coa chat [<id>]`. Con un default y no con un id inventado en cada arranque: un chat que
-            // olvida todo al cerrarse es justo lo que P16 vino a quitar, y pedir el id para lo más
-            // común obligaría a inventar uno antes de poder preguntar nada.
-            $this->sesionDelChatId = \is_string($argv[2] ?? null) && trim($argv[2]) !== ''
-                ? trim($argv[2])
-                : 'chat';
+            // ── CADA CHAT ES UNA SESIÓN NUEVA, salvo que digas lo contrario ─────────────────────
+            //
+            // Antes todo caía en una sesión llamada `chat`, y eso mezclaba trabajos que no tenían
+            // nada que ver: preguntar por los plugins un martes y depurar un plugin el jueves
+            // compartían plan, pendientes y permisos concedidos. Un permiso otorgado para una tarea
+            // no debería seguir vigente en otra que nadie relacionó con ella.
+            //
+            //   coa chat              → sesión nueva
+            //   coa chat --continue   → retoma la última que se tocó
+            //   coa chat <id>         → ésa, exista o no (nombrarla es crearla)
+            //
+            // Lo viejo NO se pierde: `/sessions` las lista y deja elegir, y `agent:sessions` sigue
+            // siendo la vía por fuera del TUI.
+            $pedido = \is_string($argv[2] ?? null) ? trim($argv[2]) : '';
+            $this->sesionDelChatId = match (true) {
+                $pedido === '--continue' || $pedido === '-c' => $this->ultimaSesion() ?? $this->sesionNueva(),
+                $pedido !== '' && !str_starts_with($pedido, '-') => $pedido,
+                default => $this->sesionNueva(),
+            };
 
             [$ancho, $alto] = $this->tamano();
 
@@ -158,6 +287,19 @@ final class Application
                 $this->contestarEnElChat(...),
                 $ancho,
                 $alto,
+                bienvenida: [
+                    // Con qué se está trabajando, contestado ANTES de que alguien teclee. Sale de
+                    // las mismas fuentes que el agente usa: la credencial declarada y el catálogo
+                    // de operaciones — no de una constante que pueda envejecer aparte.
+                    'model' => $this->modeloDelAgente(),
+                    'tools' => \count($this->all()),
+                    'session' => $this->sesionDelChatId,
+                    'nueva' => $pedido !== '--continue' && $pedido !== '-c',
+                ],
+                catalogo: $this->sesionesParaElegir(...),
+                continuar: function (string $id): void {
+                    $this->sesionDelChatId = $id;
+                },
             );
 
             // LA PANTALLA SE REGISTRA COMO SUPERFICIE, y por eso recibe lo que el agente hace
@@ -205,6 +347,46 @@ final class Application
             return 0;
         }
 
+        // LA PANTALLA ES DE LA PANTALLA, Y NADIE MÁS ESCRIBE EN ELLA.
+        //
+        // Un TUI pinta con secuencias ANSI sobre la terminal completa, así que CUALQUIER escritura
+        // ajena la destruye: un `PHP Warning` de una operación, un `echo` olvidado en un plugin, un
+        // aviso de deprecación de una dependencia. No es hipotético — un desajuste de versiones
+        // escupió un stack trace de PHP encima de la conversación y la pantalla quedó ilegible, con
+        // el agente funcionando perfectamente detrás.
+        //
+        // Los avisos NO se pierden: van al log de la app, que es donde se leen sin pelearse por el
+        // mismo espacio. Lo que se apaga es el canal, no el hecho. Y sólo mientras el TUI corre —
+        // fuera de él, la CLI sigue diciendo lo que tenga que decir por su salida de siempre.
+        $mostrarErrores = \ini_get('display_errors');
+        \ini_set('display_errors', '0');
+        $bitacora = \ini_get('error_log');
+        $log = $this->root . '/var/coa-tui.log';
+        if (@is_dir(\dirname($log)) || @mkdir(\dirname($log), 0o775, true)) {
+            \ini_set('error_log', $log);
+        }
+
+        // Y SE LE AVISA A QUIEN ESCRIBE A PROPÓSITO. `display_errors` sólo gobierna los avisos que
+        // PHP emite; un `fwrite(STDERR)` explícito pasa por encima — verificado. El logger de esta
+        // app es justo eso, así que se le dice que la pantalla está tomada.
+        \App\Support\StderrLogger::pantallaTomada(true);
+
+        try {
+            return $this->correrPantalla($pantalla);
+        } finally {
+            \App\Support\StderrLogger::pantallaTomada(false);
+            // Se restaura PASE LO QUE PASE: dejar los avisos apagados después de salir del TUI
+            // convertiría un arreglo de superficie en una ceguera del proceso entero.
+            \ini_set('display_errors', $mostrarErrores === false ? '1' : $mostrarErrores);
+            if ($bitacora !== false) {
+                \ini_set('error_log', $bitacora);
+            }
+        }
+    }
+
+    /** El bucle en sí, para que el restaurador de arriba tenga un `finally` que lo abrace. */
+    private function correrPantalla(OperationsScreen|AgentScreen $pantalla): int
+    {
         $terminal = new StreamTerminal('coa');
 
         // CON QUÉ PINTAR SIN SALIR DEL BUCLE: la pantalla del agente es síncrona y, mientras el

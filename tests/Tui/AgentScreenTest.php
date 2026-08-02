@@ -156,13 +156,41 @@ final class AgentScreenTest extends TestCase
         self::assertSame('prompt', $pantalla->loop()->focusedId());
     }
 
-    /** Antes de preguntar, la pantalla invita en vez de mostrar un panel vacío. */
-    public function testAnEmptyConversationInvites(): void
+    /**
+     * Antes de preguntar, la pantalla ABRE CON SU PORTADA en vez de un panel vacío.
+     *
+     * Y la portada contesta lo que alguien necesita antes de teclear nada: con qué modelo está
+     * hablando, cuántas operaciones puede tocar el agente, y en qué sesión está parado. Un agente
+     * que no dice con qué está pensando obliga a confiar sin poder verificar.
+     */
+    public function testTheScreenOpensWithItsCoverAndSaysWhatItIsWorkingWith(): void
     {
-        self::assertStringContainsString(
-            'Pregúntale algo',
-            $this->pantalla(static fn (string $q): array => ['ok' => true])->render(),
+        $pantalla = new AgentScreen(
+            static fn (string $q): array => ['ok' => true],
+            null,
+            null,
+            74,
+            24,
+            false,
+            ['model' => 'local:qwen3-coder:30b', 'tools' => 16, 'session' => 'chat-0802-a3f1', 'nueva' => true],
         );
+
+        $texto = preg_replace('/\e\[[0-9;]*m/', '', $pantalla->render()) ?? '';
+
+        self::assertStringContainsString('local:qwen3-coder:30b', $texto, 'con qué modelo se está hablando');
+        self::assertStringContainsString('16 operaciones', $texto, 'qué puede tocar');
+        self::assertStringContainsString('chat-0802-a3f1', $texto, 'en qué sesión está parado');
+        self::assertStringContainsString('(nueva)', $texto, 'y que es nueva, no una retomada por accidente');
+        self::assertStringContainsString('/sessions', $texto, 'y cómo llegar a las otras');
+    }
+
+    /** Pero una sesión CON estado no se tapa con la portada: el hilo va antes que la bienvenida. */
+    public function testASessionWithStateSkipsTheCover(): void
+    {
+        $sesion = new Session('s1', 'migrar Inventario', plan: 'un plan que ya existe');
+        $texto = $this->pantallaDe($sesion, static fn (string $q): array => ['ok' => true])->render();
+
+        self::assertStringContainsString('un plan que ya existe', $texto);
     }
 
     /**

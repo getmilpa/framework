@@ -31,11 +31,37 @@ use Psr\Log\AbstractLogger;
  */
 final class StderrLogger extends AbstractLogger
 {
+    /**
+     * Mientras esto sea verdadero, NADIE escribe al tty — ni siquiera este logger.
+     *
+     * Lo destapó una revisión adversaria el mismo día en que se agregó: apagar `display_errors`
+     * protege al TUI de los avisos de PHP, y NO de un `fwrite(STDERR)` explícito como el de abajo.
+     * O sea que la pieza que existe para que «lo dice» sea cierto era, ella misma, una de las que
+     * podía destruir la pantalla donde se iba a leer.
+     *
+     * No se pierde nada: con el TUI arriba el aviso va al `error_log` del proceso —que la propia
+     * pantalla apunta a `var/coa-tui.log`— y ahí se lee sin pelear por el mismo espacio.
+     */
+    private static bool $pantallaTomada = false;
+
+    /** La pantalla la tomó un TUI: a partir de aquí los avisos van al log, no al tty. */
+    public static function pantallaTomada(bool $tomada): void
+    {
+        self::$pantallaTomada = $tomada;
+    }
+
     /** @param array<string, mixed> $context */
     public function log($level, string|\Stringable $message, array $context = []): void
     {
         $ctx = $context === [] ? '' : ' ' . (json_encode($context, \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES) ?: '');
+        $linea = '[' . $level . '] ' . $message . $ctx;
 
-        fwrite(\STDERR, '[' . $level . '] ' . $message . $ctx . "\n");
+        if (self::$pantallaTomada) {
+            error_log($linea);
+
+            return;
+        }
+
+        fwrite(\STDERR, $linea . "\n");
     }
 }

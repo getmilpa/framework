@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Operations;
 
+use App\Support\ContratoInstalado;
 use Milpa\Agent\AutonomyMode;
 use Milpa\Agent\Principal;
 use Milpa\Agent\Session;
@@ -345,7 +346,10 @@ final class SessionOperations implements CommandProvider
                     'id' => $t->id,
                     'text' => $t->text,
                     'status' => $t->status->value,
-                    'origin' => $t->origin?->value,
+                    // A través del contrato: `Todo::$origin` nació el 2026-08-01 y el `?->` protege
+                    // el desreferenciado, NO la lectura — con un vendor anterior emite el aviso que
+                    // destruye la pantalla del TUI antes de devolver null.
+                    'origin' => ContratoInstalado::valorDeEnum($t, 'origin'),
                     'mutationsSince' => max(0, $sesion->mutations - $t->mutationsAt),
                 ],
                 array_filter($sesion->todos, static fn (Todo $t): bool => $t->status !== TodoStatus::Done),
@@ -361,7 +365,9 @@ final class SessionOperations implements CommandProvider
                     // Presente sólo cuando nadie decidió: la ventana se cerró sola.
                     'expired' => $d['expired'] ?? null,
                 ],
-                $sesion->decisions,
+                // `decisions` puede no existir en un vendor anterior, y `array_map` sobre null es
+                // TypeError, no aviso: la operación entera se cae en vez de mostrar lo que sí sabe.
+                ContratoInstalado::arreglo($sesion, 'decisions'),
             ),
             'endedBecause' => $sesion->endedBecause,
         ];

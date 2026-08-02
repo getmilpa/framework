@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Agent;
 
+use App\Support\ContratoInstalado;
 use Milpa\Agent\PolicyDecision;
 use Milpa\Agent\Session;
 use Milpa\Agent\SessionPolicy;
@@ -144,7 +145,15 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
      */
     private function intentUnderdetermined(Operation $operacion, array $arguments): ?\Milpa\Agent\PendingQuestion
     {
-        $campo = $operacion->namedTarget;
+        // SE PREGUNTA SI EL CONTRATO EXISTE, no se asume. `namedTarget` nació en milpa/command 0.5 y
+        // este `src/` viaja con `composer create-project`: puede convivir con un vendor que su dueño
+        // no actualizó —lock viejo, update parcial que no resuelve— y ahí la propiedad no está.
+        //
+        // Encontrado en la máquina de Rod, y el daño fue desproporcionado: el warning de PHP se
+        // escribe sobre la pantalla del TUI y la destruye, así que un desajuste de versiones se veía
+        // como un stack trace encima de la conversación. Leer defensivamente cuesta una línea; el
+        // pin declara la exigencia y esto la sobrevive cuando el pin no se cumplió todavía.
+        $campo = $this->contratoDeclaradoPor($operacion);
         if ($campo === null || $this->petition === '') {
             return null;
         }
@@ -169,7 +178,7 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
         // Se lee del hecho, no de la prosa: la decisión hereda `reason` y `why` de la pregunta, así
         // que «¿ya se confirmó plugins.disable sobre HelloPlugin?» se contesta comparando código y
         // JSON — nunca el texto de la pregunta, que se redacta y cambia.
-        foreach ($this->session->decisions as $decision) {
+        foreach (ContratoInstalado::arreglo($this->session, 'decisions') as $decision) {
             if (($decision['reason'] ?? null) !== 'target_not_named') {
                 continue;
             }
@@ -197,6 +206,19 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
             expiresAt: $this->vence()?->format(\DateTimeInterface::ATOM),
             reason: 'target_not_named',
         );
+    }
+
+    /**
+     * El argumento que esta operación exige nombrado, leído SIN asumir que el contrato existe.
+     *
+     * Recibe `object` y no `Operation` a propósito: el análisis estático ve el paquete instalado
+     * AQUÍ, donde `namedTarget` siempre existe, y con el tipo estrecho concluiría —con razón, desde
+     * su vista— que la comprobación sobra. En runtime no sobra: este `src/` viaja con
+     * `composer create-project` y convive con el vendor que su dueño tenga.
+     */
+    private function contratoDeclaradoPor(object $operacion): ?string
+    {
+        return ContratoInstalado::cadena($operacion, 'namedTarget');
     }
 
     /** Cuándo vence la pregunta que se está por hacer, o `null` si el host no puso plazo. */

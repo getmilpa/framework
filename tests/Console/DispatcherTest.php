@@ -202,7 +202,8 @@ final class DispatcherTest extends TestCase
         $r = $this->correr('chat');
 
         self::assertSame(0, $r['codigo']);
-        self::assertStringContainsString('Pregúntale algo', $r['texto']);
+        // La portada, que es con lo que abre desde que cada chat es una sesión nueva.
+        self::assertStringContainsString('El agente de esta app', $r['texto']);
     }
 
     /**
