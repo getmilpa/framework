@@ -513,6 +513,64 @@ final class AgentScreenTest extends TestCase
         self::assertStringContainsString('› h', $pintado, 'lo escrito NO desaparece mientras trabaja');
     }
 
+    /**
+     * UNA RESPUESTA LARGA NO PUEDE VACIAR LA PANTALLA.
+     *
+     * Encontrado corriendo `coa chat` contra un modelo real: el agente llamaba su herramienta,
+     * redactaba su respuesta —todo escrito en el stream— y la pantalla quedaba con la línea de
+     * ayuda y nada más. Sin excepción, sin stderr: el árbol crecía un nodo por línea de respuesta,
+     * pasaba del alto del terminal, y el motor de layout colapsaba en silencio.
+     *
+     * Es el peor modo de falla posible para esta superficie: el trabajo se hizo bien y quien mira
+     * ve una pantalla en blanco. Un markdown de modelo trae veinte a cuarenta líneas con listas y
+     * negritas, así que el caso no era raro — era el normal.
+     */
+    public function testALongAnswerDoesNotBlankTheScreen(): void
+    {
+        foreach ([30, 60, 200] as $lineas) {
+            $pantalla = $this->pantalla(static fn (string $p): array => [
+                'ok' => true,
+                'answer' => implode("\n", array_fill(0, $lineas, 'linea de una respuesta larga')),
+                'steps' => 2,
+                'tools' => 21,
+            ]);
+            $this->teclear($pantalla, 'que plugins hay');
+            $pantalla->press('enter');
+
+            $pintado = preg_replace('/\e\[[0-9;]*m/', '', $pantalla->render()) ?? '';
+            $vivas = array_filter(explode("\n", $pintado), static fn (string $l): bool => trim($l) !== '');
+
+            self::assertGreaterThan(
+                3,
+                \count($vivas),
+                "una respuesta de {$lineas} lineas dejo la pantalla en blanco",
+            );
+            self::assertStringContainsString(
+                'linea de una respuesta larga',
+                $pintado,
+                "una respuesta de {$lineas} lineas no se ve por ningun lado",
+            );
+        }
+    }
+
+    /** Y lo que se ve es la COLA: lo último que dijo el agente, no el principio perdido. */
+    public function testALongAnswerShowsItsTailNotItsHead(): void
+    {
+        $pantalla = $this->pantalla(static fn (string $p): array => [
+            'ok' => true,
+            'answer' => implode("\n", array_map(static fn (int $i): string => "renglon-{$i}", range(1, 80))),
+            'steps' => 1,
+            'tools' => 1,
+        ]);
+        $this->teclear($pantalla, 'dime');
+        $pantalla->press('enter');
+
+        $pintado = preg_replace('/\e\[[0-9;]*m/', '', $pantalla->render()) ?? '';
+
+        self::assertStringContainsString('renglon-80', $pintado, 'lo ultimo es lo que importa');
+        self::assertStringNotContainsString('renglon-1 ', $pintado, 'y lo viejo cede el lugar');
+    }
+
     private ?AgentScreen $pantallaActual = null;
 
     private function render(string $prompt): string

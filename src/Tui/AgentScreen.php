@@ -91,7 +91,7 @@ final class AgentScreen implements SurfaceBroadcaster
         private readonly ?\Closure $sesion = null,
         private readonly ?\Closure $contestar = null,
         int $width = 80,
-        int $height = 24,
+        private readonly int $height = 24,
         bool $ansi = true,
     ) {
         $this->loop = new RetainedTuiLoop(
@@ -100,7 +100,7 @@ final class AgentScreen implements SurfaceBroadcaster
             ['prompt'],
             'prompt',
             $width,
-            $height,
+            $this->height,
             $ansi,
             fn (string $key, RetainedTuiLoop $loop): bool => $this->handleKey($key, $loop),
             // Sin `q` entre las teclas de salida: el default del tier la incluye —lo que un dashboard
@@ -354,14 +354,28 @@ final class AgentScreen implements SurfaceBroadcaster
 
         // Sólo la COLA de la conversación. Una sesión larga no cabe en la pantalla, y la parte que
         // importa es la de abajo — la de arriba ya está resumida en el estado.
-        $recientes = \array_slice($this->conversacion, -6);
-        foreach ($recientes as $i => $turno) {
+        // RECORTADA POR LÍNEAS Y NO POR TURNOS, y ésa era la falla: seis turnos caben o no según lo
+        // que midan, y una sola respuesta de modelo trae veinte a cuarenta líneas de markdown.
+        // Pasado el alto del terminal el árbol colapsaba y la pantalla quedaba con la línea de ayuda
+        // y nada más — sin excepción y sin stderr. El trabajo se había hecho bien y quien miraba
+        // veía una pantalla en blanco, que es el peor modo de falla que puede tener una superficie.
+        //
+        // Se conserva el FINAL: lo último que dijo el agente es lo que hay que leer. Lo que se va no
+        // se pierde —está en el stream, que es la bitácora— pero la pantalla tiene un tamaño.
+        $lineas = [];
+        foreach (\array_slice($this->conversacion, -6) as $i => $turno) {
             $marca = $turno['quien'] === 'tú' ? '› ' : '  ';
             foreach (explode("\n", $turno['texto']) as $j => $linea) {
-                $hijos[] = new TuiNode("turno:{$i}:{$j}", 'text', props: [
-                    'text' => ($j === 0 ? $marca : '  ') . $linea,
-                ]);
+                $lineas[] = ["turno:{$i}:{$j}", ($j === 0 ? $marca : '  ') . $linea];
             }
+        }
+
+        // El presupuesto: el alto menos lo que SIEMPRE se pinta —título, estado, separadores, prompt
+        // y ayuda— con holgura. Nunca menos de tres: una pantalla diminuta debe mostrar algo, no
+        // vaciarse por aritmética.
+        $presupuesto = max(3, $this->height - \count($hijos) - 8);
+        foreach (\array_slice($lineas, -$presupuesto) as [$id, $texto]) {
+            $hijos[] = new TuiNode($id, 'text', props: ['text' => $texto]);
         }
 
         $hijos[] = new TuiNode('separador', 'text', props: ['text' => str_repeat('─', 40)]);
