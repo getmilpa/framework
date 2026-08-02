@@ -323,4 +323,174 @@ final class AgentScreenTest extends TestCase
 
         self::assertSame('hol', $pantalla->conversation()[0]['texto'], 'backspace borró uno');
     }
+
+    /**
+     * Mientras el agente trabaja, la pantalla LO DICE y PINTA — las dos mitades, o ninguna.
+     *
+     * Es el defecto que Rod reportó con una captura: la bandera existía, el docblock afirmaba que el
+     * frame anterior decía «pensando…», y el código la ponía y la quitaba dentro del mismo tick. Desde
+     * afuera es idéntico a no haber cambiado nada, y ~16 segundos de pantalla igual son
+     * indistinguibles de un proceso colgado.
+     *
+     * La prueba mira las dos cosas porque son inseparables: el estado escrito sin pintar no existe
+     * para quien mira, que es el único que importa.
+     */
+    public function testWhileTheAgentWorksTheScreenSaysSoAndPaints(): void
+    {
+        $frames = [];
+        $visto = null;
+
+        $pantalla = new AgentScreen(function (string $p) use (&$visto): array {
+            // DENTRO de la llamada bloqueante: aquí es donde la pantalla tiene que estar diciendo algo.
+            $visto = $this->render($p);
+
+            return ['ok' => true, 'answer' => 'listo', 'steps' => 1, 'tools' => 2];
+        });
+
+        $pantalla->paintWith(static function () use (&$frames, $pantalla): void {
+            $frames[] = $pantalla->render();
+        });
+
+        $this->pantallaActual = $pantalla;
+        $pantalla->loop()->dispatchKey('h');
+        $pantalla->loop()->dispatchKey("\r");
+
+        self::assertNotEmpty($frames, 'no pintó nada mientras trabajaba');
+        self::assertStringContainsString('preguntando al agente', (string) $frames[0]);
+        self::assertStringNotContainsString('preguntando al agente', $pantalla->render(), 'y al terminar, se quita');
+    }
+
+    /**
+     * Sin nadie que le diga cómo pintar, el estado IGUAL queda escrito.
+     *
+     * Es el caso de una tubería o una prueba: la pantalla no puede saber si hay terminal —eso lo sabe
+     * quien tiene el stream (ADR-0025)— así que no puede depender de que le hayan dado con qué
+     * pintar.
+     */
+    public function testWithoutAPainterTheStateIsStillWritten(): void
+    {
+        $pantalla = new AgentScreen(static fn (string $p): array => ['ok' => true, 'answer' => 'ok']);
+
+        $pantalla->loop()->dispatchKey('x');
+        self::assertStringContainsString('x', $pantalla->render());
+    }
+
+    /** Y pintando en una terminal de verdad, los bytes llegan a ella. */
+    public function testPaintingOnATerminalWritesToIt(): void
+    {
+        $terminal = new class () implements \Milpa\Live\Contracts\Tui\TerminalInterface {
+            public string $escrito = '';
+
+            public function start(callable $onInput, callable $onResize): void
+            {
+            }
+
+            public function stop(): void
+            {
+            }
+
+            public function write(string $data): void
+            {
+                $this->escrito .= $data;
+            }
+
+            public function pollInput(): string
+            {
+                return '';
+            }
+
+            public function columns(): int
+            {
+                return 80;
+            }
+
+            public function rows(): int
+            {
+                return 24;
+            }
+
+            public function atEndOfInput(): bool
+            {
+                return true;
+            }
+
+            public function moveBy(int $lines): void
+            {
+            }
+
+            public function hideCursor(): void
+            {
+            }
+
+            public function showCursor(): void
+            {
+            }
+
+            public function clearLine(): void
+            {
+            }
+
+            public function clearFromCursor(): void
+            {
+            }
+
+            public function clearScreen(): void
+            {
+            }
+
+            public function moveTo(int $row, int $column): void
+            {
+            }
+
+            public function setTitle(string $title): void
+            {
+            }
+        };
+
+        $pantalla = new AgentScreen(static fn (string $p): array => ['ok' => true, 'answer' => 'ok']);
+        $pantalla->paintOn($terminal);
+        $pantalla->loop()->dispatchKey('h');
+        $pantalla->loop()->dispatchKey("\r");
+
+        self::assertNotSame('', $terminal->escrito, 'la terminal no recibio un solo byte');
+    }
+
+    /**
+     * La pantalla recibe la actividad POR EL MISMO PUENTE que alimentaría a una página web.
+     *
+     * No hay canal propio: se registra como `SurfaceBroadcaster` y `BroadcastingEventStore` le empuja
+     * cada hecho ya traducido. Y filtra — una tarjeta que se mueve es del tablero; aquí no hay dónde
+     * pintarla, y fingir que sí sería inventar una vista.
+     */
+    public function testTheScreenReceivesActivityThroughTheSameBridgeAsAnyOtherSurface(): void
+    {
+        $frames = [];
+        $pantalla = new AgentScreen(static fn (string $p): array => ['ok' => true, 'answer' => 'ok']);
+        $pantalla->paintWith(static function () use (&$frames, $pantalla): void {
+            $frames[] = $pantalla->render();
+        });
+
+        // El almacén real, con la pantalla como superficie: exactamente el cableado de `coa chat`.
+        $almacen = new \Milpa\Agent\SessionStore(
+            new \App\Agent\BroadcastingEventStore(new \Milpa\EventStore\InMemoryEventStore(), $pantalla),
+        );
+
+        $almacen->start('chat', 'x');
+        $almacen->recordToolCall('chat', 'plugins_list', [], 'ok');
+
+        self::assertNotEmpty($frames);
+        self::assertStringContainsString('plugins_list', (string) end($frames), 'el nombre de la herramienta llega a la pantalla');
+
+        // Y una tarjeta —que es del tablero— no cambia nada aquí.
+        $antes = \count($frames);
+        $almacen->setTodo('chat', new \Milpa\Agent\Todo('t1', 'algo', \Milpa\Agent\TodoStatus::Pending));
+        self::assertSame($antes, \count($frames), 'lo que no es actividad no repinta esta pantalla');
+    }
+
+    private ?AgentScreen $pantallaActual = null;
+
+    private function render(string $prompt): string
+    {
+        return $this->pantallaActual?->render() ?? '';
+    }
 }

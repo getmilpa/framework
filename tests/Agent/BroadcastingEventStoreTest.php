@@ -108,7 +108,7 @@ final class BroadcastingEventStoreTest extends TestCase
     /**
      * Un hecho que no cambia lo que se ve no se empuja.
      *
-     * El `null` del proyector es una afirmación —«esto no se pinta»—, así que un turno del modelo no
+     * El `null` del proyector es una afirmación —«esto no se pinta»—, así que un permiso concedido no
      * tiene por qué despertar a ninguna superficie.
      */
     public function testAFactThatChangesNothingVisibleIsNotPushed(): void
@@ -117,10 +117,33 @@ final class BroadcastingEventStoreTest extends TestCase
         $almacen = new SessionStore(new BroadcastingEventStore(new InMemoryEventStore(), $espia));
 
         $almacen->start('s1', 'x');
-        $almacen->recordTurn('s1', 'assistant', 'pensando');
-        $almacen->recordToolCall('s1', 'read', [], 'ok');
+        $almacen->grant('s1', 'plugins.disable');
 
-        self::assertSame([], $espia->payloads, 'turnos y llamadas no pintan nada');
+        self::assertSame([], $espia->payloads, 'abrir y permitir no pintan nada');
+    }
+
+    /**
+     * Pero la ACTIVIDAD sí se empuja, y en el momento en que ocurre.
+     *
+     * Es lo que hace que una pantalla pueda decir en qué está mientras espera: los turnos y las
+     * llamadas a herramienta no mueven una tarjeta, pero son exactamente el hecho que distingue
+     * trabajo de cuelgue. Se proyectan una vez y cada superficie filtra.
+     */
+    public function testActivityIsPushedAsItHappens(): void
+    {
+        $espia = new BroadcasterEspia();
+        $almacen = new SessionStore(new BroadcastingEventStore(new InMemoryEventStore(), $espia));
+
+        $almacen->start('s1', 'x');
+        $almacen->recordTurn('s1', 'user', 'hola');
+        $almacen->recordToolCall('s1', 'plugins_list', [], 'ok');
+
+        $estados = array_map(
+            static fn (array $p): mixed => $p['activity']['state'] ?? null,
+            array_values(array_filter($espia->payloads, static fn (array $p): bool => $p['kind'] === 'activity')),
+        );
+
+        self::assertSame(['thinking', 'tool'], $estados);
     }
 
     /**

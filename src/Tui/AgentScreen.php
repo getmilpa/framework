@@ -18,6 +18,8 @@ use Milpa\Agent\Session;
 use Milpa\Agent\TodoStatus;
 use Milpa\Live\Tui\NodeRenderers\BoxRenderer;
 use Milpa\Live\Tui\NodeRenderers\TextRenderer;
+use App\Agent\SurfaceBroadcaster;
+use Milpa\Live\Contracts\Tui\TerminalInterface;
 use Milpa\Live\Tui\RetainedTuiLoop;
 use Milpa\Live\Tui\RetainedTuiRenderer;
 use Milpa\Live\Tui\SimpleTuiLayoutEngine;
@@ -43,7 +45,7 @@ use Milpa\Live\ValueObjects\Tui\TuiNode;
  * solo camino. Por eso el frame ANTES de preguntar dice «pensando…», y no un spinner que no gira:
  * una interfaz que finge actividad que no ocurre entrena a no creerle.
  */
-final class AgentScreen
+final class AgentScreen implements SurfaceBroadcaster
 {
     private readonly RetainedTuiLoop $loop;
 
@@ -52,7 +54,25 @@ final class AgentScreen
     /** @var list<array{quien: string, texto: string}> */
     private array $conversacion = [];
 
-    private bool $pensando = false;
+    /**
+     * En qué está la pantalla AHORA: `null` cuando espera al humano, o la línea que describe el
+     * trabajo en curso.
+     *
+     * Deja de ser un booleano porque «pensando» y «corriendo `plugins_list`» son hechos distintos, y
+     * el segundo es el que le dice a quien mira que el sistema NO está colgado: un nombre de
+     * herramienta cambiando es actividad observable, un texto fijo no.
+     */
+    private ?string $actividad = null;
+
+    /**
+     * Cómo se pinta un frame sin salir del bucle.
+     *
+     * Existe porque esta pantalla es SÍNCRONA: mientras el agente trabaja, el bucle no vuelve a
+     * pasar. Sin esto, el frame que dice «pensando…» se calcula y nunca se escribe — que es
+     * exactamente lo que pasaba: el docblock de arriba lo afirmaba y el código lo desmentía, con la
+     * bandera puesta y quitada dentro del mismo tick.
+     */
+    private ?\Closure $repintar = null;
 
     /** Lo que costó la última vuelta, ya redactado — `null` mientras no haya habido ninguna. */
     private ?string $ultimoCosto = null;
@@ -105,6 +125,78 @@ final class AgentScreen
     }
 
     /** La pantalla completa como texto, sin necesitar una terminal. */
+    /**
+     * Un hecho de la sesión, ya traducido, mientras está pasando.
+     *
+     * ── ES LA MISMA TUBERÍA QUE EL TABLERO ──────────────────────────────────────────────────────
+     *
+     * Esta pantalla no tiene un canal propio: se registra como {@see SurfaceBroadcaster} y recibe lo
+     * que `BroadcastingEventStore` empuja al apendar cada hecho — exactamente lo que recibiría una
+     * página web suscrita al mismo tópico. Una segunda vía para «lo que el agente está haciendo»
+     * sería la copia que la spec del tablero prohíbe, y divergiría en el hecho que nadie probó.
+     *
+     * Filtra `activity` y **ignora lo demás** a propósito. Una tarjeta que se mueve es del tablero;
+     * aquí no hay dónde pintarla, y fingir que sí sería inventar una vista.
+     */
+    public function broadcast(string $topic, array $payload): void
+    {
+        if (($payload['kind'] ?? null) !== 'activity') {
+            return;
+        }
+
+        $estado = $payload['activity']['state'] ?? null;
+        $detalle = $payload['activity']['detail'] ?? null;
+
+        $this->anunciar(match ($estado) {
+            'tool' => '  ' . (\is_string($detalle) ? $detalle : 'herramienta')
+                . (($payload['activity']['mutating'] ?? false) === true ? ' · toca algo' : '') . '…',
+            'ready' => 'ordenando la respuesta…',
+            // `thinking` y cualquier estado que este paquete todavía no conozca caen aquí: decir «el
+            // modelo tiene la palabra» ante algo desconocido es menos preciso que un nombre, pero es
+            // cierto — el hecho llegó, así que algo está pasando.
+            default => 'el modelo tiene la palabra…',
+        });
+    }
+
+    /**
+     * Decir en qué se está, y ENSEÑARLO.
+     *
+     * Las dos mitades son una sola cosa: cambiar el estado sin pintar es lo que hacía la versión
+     * anterior, y desde afuera es indistinguible de no haber cambiado nada. Si nadie dio con qué
+     * pintar —una tubería, una prueba— el estado igual queda escrito y `render()` lo muestra.
+     */
+    private function anunciar(string $que): void
+    {
+        $this->actividad = $que;
+
+        if ($this->repintar !== null) {
+            ($this->repintar)();
+        }
+    }
+
+    /** Quien tiene la terminal dice cómo escribir un frame; la pantalla no la conoce (ADR-0025). */
+    public function paintWith(\Closure $repintar): void
+    {
+        $this->repintar = $repintar;
+    }
+
+    /**
+     * La forma normal de lo anterior: pintar en ESTA terminal.
+     *
+     * Recibe la terminal, no la busca — la pantalla sigue sin saber si hay una, que es lo que la hace
+     * probable sin ella. Y usa `nextFrameBytes()`, el mismo diff que escribe el bucle en cada vuelta:
+     * un frame pintado a media espera no pelea con el siguiente, ES el siguiente, adelantado.
+     */
+    public function paintOn(TerminalInterface $terminal): void
+    {
+        $this->paintWith(function () use ($terminal): void {
+            $bytes = $this->loop->nextFrameBytes();
+            if ($bytes !== '') {
+                $terminal->write($bytes);
+            }
+        });
+    }
+
     public function render(): string
     {
         return $this->loop->renderScreen();
@@ -179,11 +271,21 @@ final class AgentScreen
             return;
         }
 
-        $this->pensando = true;
+        // UN SOLO ESTADO, Y ES EL QUE SE PUEDE SOSTENER.
+        //
+        // Lo que hace falta de verdad son cuatro —enviando, esperando al modelo, corriendo tal
+        // herramienta, listo— y los tres primeros ya son hechos que el stream escribe. Pero llegan
+        // por el `EventStore`, no por el valor de retorno, y traerlos hasta aquí es el siguiente
+        // corte (promesa `tui-says-what-it-is-doing`).
+        //
+        // Se anuncia UNO en vez de fingir cuatro: un estado que no cambia mientras el agente llama
+        // tres herramientas dice menos de lo que quisiéramos, pero no miente. Un spinner que gira
+        // sin saber nada sí — y entrena a no creerle a la pantalla.
+        $this->anunciar('preguntando al agente… (Ctrl-C para salir)');
 
         $respuesta = ($this->responder)($pregunta);
 
-        $this->pensando = false;
+        $this->actividad = null;
 
         if ($respuesta['ok']) {
             $this->ultimoCosto = 'última vuelta: ' . (int) ($respuesta['steps'] ?? 0) . ' paso(s) · '
@@ -276,7 +378,7 @@ final class AgentScreen
         }
 
         $hijos[] = new TuiNode('prompt', 'text', props: [
-            'text' => $this->pensando ? '  pensando…' : '› ' . $this->entrada . '▏',
+            'text' => $this->actividad !== null ? '  ' . $this->actividad : '› ' . $this->entrada . '▏',
         ]);
         $hijos[] = new TuiNode('ayuda', 'text', props: [
             'text' => $pendiente !== null

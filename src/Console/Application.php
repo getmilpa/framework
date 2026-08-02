@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Console;
 
+use App\Agent\SurfaceBroadcaster;
 use App\Support\Capabilities;
 use Milpa\Command\CommandProvider;
 use Milpa\Command\Operation;
@@ -151,13 +152,24 @@ final class Application
 
             [$ancho, $alto] = $this->tamano();
 
-            return $this->pantalla(new AgentScreen(
+            $chat = new AgentScreen(
                 $this->preguntarAlAgente(...),
                 $this->sesionDelChat(...),
                 $this->contestarEnElChat(...),
                 $ancho,
                 $alto,
-            ));
+            );
+
+            // LA PANTALLA SE REGISTRA COMO SUPERFICIE, y por eso recibe lo que el agente hace
+            // mientras lo hace: `AgentOperations` arma el almacén con `BroadcastingEventStore` en
+            // cuanto encuentra un `SurfaceBroadcaster` en el contenedor. No hace falta un canal
+            // nuevo — es el mismo puente por el que se enteraría una página web.
+            //
+            // Va ANTES de correr: el almacén se construye en la primera pregunta, y un broadcaster
+            // registrado después llegaría tarde a su propia sesión.
+            $this->kernel()->container()->registerService(SurfaceBroadcaster::class, $chat);
+
+            return $this->pantalla($chat);
         }
 
         $operacion = $this->find($comando);
@@ -193,7 +205,16 @@ final class Application
             return 0;
         }
 
-        $pantalla->loop()->runOn(new StreamTerminal('coa'));
+        $terminal = new StreamTerminal('coa');
+
+        // CON QUÉ PINTAR SIN SALIR DEL BUCLE: la pantalla del agente es síncrona y, mientras el
+        // agente trabaja, el bucle no vuelve a pasar. Sin esto se queda idéntica los ~16 segundos que
+        // tarda una vuelta, y quedarse idéntica es indistinguible de estar colgada.
+        if ($pantalla instanceof AgentScreen) {
+            $pantalla->paintOn($terminal);
+        }
+
+        $pantalla->loop()->runOn($terminal);
 
         return 0;
     }

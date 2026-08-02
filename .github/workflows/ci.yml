@@ -66,7 +66,7 @@ jobs:
       - name: Install the opt-ins (for the tests that verify the other face)
         run: |
           composer require --dev --no-interaction --no-progress --prefer-dist \
-            milpa/agent:^0.2.2 milpa/ai-gateway:^0.4.2 milpa/auth:^0.3.4 \
+            milpa/agent:^0.3 milpa/ai-gateway:^0.4.2 milpa/auth:^0.3.4 \
             milpa/data:^0.2.2 milpa/devtools:^0.9.6 milpa/mcp-server:^0.4.3
       - name: License gate (runtime deps must be MIT / BSD / Apache-2.0 / ISC)
         run: |
