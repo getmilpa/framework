@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/getmilpa/framework/compare/v0.14.1...v0.15.0) (2026-08-02)
+
+
+### Features
+
+* a fresh session per chat, --continue, /sessions — and a screen that survives what it cannot prevent ([bc99ea5](https://github.com/getmilpa/framework/commit/bc99ea5af015c323ae9a3857a0ca00acc7fbc0a8))
+
 ## [0.14.1](https://github.com/getmilpa/framework/compare/v0.14.0...v0.14.1) (2026-08-02)
 
 
