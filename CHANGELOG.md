@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/getmilpa/framework/compare/v0.15.0...v0.16.0) (2026-08-03)
+
+
+### Features
+
+* el plan se reproyecta, y Esc interrumpe al agente en vez de cerrar el chat ([aa170a1](https://github.com/getmilpa/framework/commit/aa170a17c34cb547163e81bf2dc0ed5884b8551b))
+
 ## [0.15.0](https://github.com/getmilpa/framework/compare/v0.14.1...v0.15.0) (2026-08-02)
 
 
