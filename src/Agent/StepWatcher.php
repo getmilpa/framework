@@ -107,7 +107,22 @@ final class StepWatcher
             $escribir = null;
             $excepcion = null;
 
-            if (@stream_select($leer, $escribir, $excepcion, 0, 0) !== 1) {
+            // UN STREAM QUE NO SE PUEDE VIGILAR NO INTERRUMPE NADA.
+            //
+            // `stream_select` lanza `ValueError` con streams sin descriptor real —`php://memory`, y
+            // cualquier envoltorio que no lo tenga—. Un vigía que no puede mirar el teclado es un vigía
+            // que no encuentra ESC; lo que NO puede es tumbar la vuelta del agente al intentarlo.
+            //
+            // El bucle envuelve `onStep` en un catch que registra y sigue, así que un ValueError aquí
+            // no sería fatal — sería peor: el vigía quedaría mudo y una interrupción dejaría de
+            // funcionar sin que nadie pudiera distinguirlo de un humano que no apretó nada.
+            try {
+                $listos = @stream_select($leer, $escribir, $excepcion, 0, 0);
+            } catch (\ValueError) {
+                return $encontro;
+            }
+
+            if ($listos !== 1) {
                 return $encontro;
             }
 

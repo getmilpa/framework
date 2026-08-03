@@ -934,4 +934,193 @@ final class AgentOperationTest extends TestCase
             'el parámetro nombrado sólo puede viajar cuando la versión que lo acepta está instalada',
         );
     }
+
+    /**
+     * INTERRUMPIR NO ES FALLAR — la vuelta se detiene y la sesión queda viva y retomable.
+     *
+     * El trabajo hecho hasta ahí ya está en el stream: cada llamada se apenda al ocurrir. Devolverlo
+     * como error sugeriría que hay algo que arreglar, y lo que hay es una decisión del humano.
+     */
+    public function testAnInterruptedTurnIsReportedAsADecisionNotAFailure(): void
+    {
+        putenv('ANTHROPIC_API_KEY=llave-de-prueba');
+
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $kernel = \App\Tests\Support\OperationsTest::bootedKernel();
+
+        $agente = new class ($kernel->container(), $almacen) extends AgentOperations {
+            public function __construct(
+                \Milpa\Interfaces\Di\DIContainerInterface $container,
+                private readonly SessionStore $almacen,
+            ) {
+                parent::__construct($container);
+            }
+
+            protected function sessions(): ?SessionStore
+            {
+                return $this->almacen;
+            }
+
+            protected function ask(
+                string $prompt,
+                int $pasos,
+                \Milpa\ToolRuntime\ToolRegistry $registry,
+                string $proveedor,
+                string $llave,
+                string $modelo,
+                callable $onStep,
+                array $history = [],
+                ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\AiGateway\OptionTable $mesa = null,
+                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\AiGateway\PlanBoard $tablero = null,
+            ): string {
+                // Tres pasos de trabajo, y al cuarto el humano dice «para».
+                $onStep();
+                $onStep();
+                $onStep();
+
+                throw \Milpa\AiGateway\RunInterrupted::porElHumano(3);
+            }
+        };
+
+        $r = $this->llamar($agente, ['prompt' => 'construye todo', 'session' => 'interrumpida']);
+
+        self::assertTrue($r['ok'], 'no es un error');
+        self::assertTrue($r['interrupted'] ?? false);
+        self::assertArrayNotHasKey('error', $r);
+        self::assertSame(3, $r['steps'] ?? 0, 'dice cuánto alcanzó a hacer');
+        self::assertStringContainsString('pídele que siga', (string) ($r['hint'] ?? ''));
+
+        // LA SESIÓN SIGUE VIVA. Quedó apendado que se interrumpió, y nada la cerró: la vuelta
+        // siguiente continúa desde donde estaba, que es todo el punto de poder interrumpir.
+        $sesion = $almacen->load('interrumpida');
+        self::assertNotNull($sesion);
+        self::assertTrue($sesion->isRunnable(), 'se puede seguir');
+        self::assertNull($sesion->endedBecause, 'y no terminó');
+        self::assertStringContainsString(
+            'interrumpió',
+            (string) ($sesion->turns[\count($sesion->turns) - 1]['content'] ?? ''),
+            'el stream lo recuerda',
+        );
+    }
+
+    /**
+     * EL PROMPT LLEVA LO QUE LA APP DECIDIÓ QUE LLEVE, y cada modo pone una cosa distinta.
+     *
+     * `agent.architectureSummary` es la perilla que Q-P17 midió: el estado derivado fija por dónde
+     * empieza el agente, y los tres modos existen porque cada uno cuesta distinto en contexto.
+     * `agent.planInstruction` es la de Q-P20-B — apagada, el agente no escribe un plan nunca.
+     */
+    public function testTheSystemPromptCarriesWhatTheAppDeclared(): void
+    {
+        $sinNada = $this->promptCon(['planInstruction' => false]);
+        self::assertStringNotContainsString('Escribe un plan', $sinNada, 'apagada, la instrucción no va');
+
+        $conPlan = $this->promptCon([]);
+        self::assertStringContainsString('Escribe un plan', $conPlan, 'y por default sí — es lo ya medido');
+        self::assertStringContainsString('sigue ésos', $conPlan, 'incluido el renglón de continuar el plan viejo');
+
+        $puntero = $this->promptCon(['architectureSummary' => 'pointer']);
+        self::assertNotSame($conPlan, $puntero, 'el modo cambia lo que se manda');
+
+        $propias = $this->promptCon(['instructions' => 'Esta app habla de inventarios.']);
+        self::assertStringContainsString('Esta app habla de inventarios.', $propias, 'lo de la app viaja tal cual');
+    }
+
+    /**
+     * El prompt del sistema con esta configuración de `agent.*`.
+     *
+     * @param array<string, mixed> $agente
+     */
+    private function promptCon(array $agente): string
+    {
+        $contenedor = new \Milpa\Container\DIContainer();
+        $contenedor->registerService(
+            \Milpa\Runtime\Config::class,
+            new \Milpa\Runtime\Config(['agent' => $agente]),
+        );
+
+        $operaciones = new class ($contenedor) extends AgentOperations {
+            public function prompt(): string
+            {
+                return $this->systemPrompt();
+            }
+        };
+
+        return $operaciones->prompt();
+    }
+
+    /**
+     * EL AGENTE VE LA ARQUITECTURA QUE ESTA APP DECLARA, derivada de los plugins que arrancaron.
+     *
+     * No de una constante ni de un archivo aparte: sale de los `PluginMetadata` de lo que el kernel
+     * booteó. Un catálogo que se lleva a mano envejece sin que nadie lo note, y el agente contestaría
+     * sobre una app que ya no existe.
+     */
+    public function testTheArchitectureIsDerivedFromThePluginsThatBooted(): void
+    {
+        $kernel = \App\Tests\Support\OperationsTest::bootedKernel();
+
+        $agente = new class ($kernel->container()) extends AgentOperations {
+            /** @return list<\Milpa\Attributes\PluginMetadata> */
+            public function metas(): array
+            {
+                return $this->pluginMetadata();
+            }
+
+            public function reporte(): ?\Milpa\Resolver\Report\ResolutionReport
+            {
+                return $this->architectureReport();
+            }
+
+            /** @return list<string> */
+            public function capacidades(): array
+            {
+                return $this->providedCapabilities();
+            }
+        };
+
+        $metas = $agente->metas();
+        self::assertNotSame([], $metas, 'la app de prueba trae plugins');
+        foreach ($metas as $meta) {
+            self::assertNotSame('', $meta->name, 'cada uno se nombra');
+        }
+
+        // EL REPORTE NO REVIENTA aunque el grafo esté como esté. Es contexto para el agente, no un
+        // gate: una app con el grafo roto tiene MÁS necesidad de que el agente pueda mirarla, no
+        // menos, así que aquí un fallo se traga y se contesta `null`.
+        $agente->reporte();
+
+        $capacidades = $agente->capacidades();
+        foreach ($capacidades as $c) {
+            self::assertIsString($c);
+        }
+    }
+
+    /**
+     * SIN KERNEL NO HAY PLUGINS QUE MIRAR, y eso se contesta vacío en vez de reventar.
+     *
+     * `pluginMetadata()` se llama al armar el prompt. Un contenedor sin kernel —una prueba, un
+     * arranque a medias— no puede enumerar plugins, y hacerlo fallar ahí dejaría al agente sin poder
+     * contestar nada por una razón que no tiene que ver con lo que se le preguntó.
+     */
+    public function testWithoutAKernelThereAreNoPluginsAndThatIsFine(): void
+    {
+        $agente = new class (new \Milpa\Container\DIContainer()) extends AgentOperations {
+            /** @return list<\Milpa\Attributes\PluginMetadata> */
+            public function metas(): array
+            {
+                return $this->pluginMetadata();
+            }
+
+            public function reporte(): ?\Milpa\Resolver\Report\ResolutionReport
+            {
+                return $this->architectureReport();
+            }
+        };
+
+        self::assertSame([], $agente->metas());
+        self::assertNull($agente->reporte(), 'sin plugins que resolver, no hay reporte que dar');
+    }
 }

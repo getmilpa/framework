@@ -677,4 +677,314 @@ final class AgentScreenTest extends TestCase
     {
         return $this->pantallaActual?->render() ?? '';
     }
+
+    /**
+     * UNA PREGUNTA ABIERTA NO SE PINTA DOS VECES.
+     *
+     * Cuando la vuelta termina pausada, el texto de la respuesta ES la pregunta — y abajo el widget la
+     * pinta otra vez con sus opciones. Salían las dos, idénticas, y la de arriba sin nada que apretar.
+     * Aquí queda sólo el widget, que es el que se contesta.
+     */
+    public function testAPausedTurnLeavesOnlyTheWidget(): void
+    {
+        $pantalla = $this->pantalla(static fn (string $q): array => [
+            'ok' => true,
+            'answer' => '¿Confirmas plugins.enable sobre «Inventario»?',
+            'paused' => true,
+            'steps' => 5,
+            'tools' => 19,
+            'hint' => 'contesta con: coa agent:answer --session=x --answer=<sí|no>',
+        ]);
+
+        $this->teclear($pantalla, 'enciende el plugin');
+        $pantalla->press('enter');
+
+        $turnos = $pantalla->conversation();
+        self::assertStringContainsString('se detuvo a preguntar', $turnos[1]['texto']);
+        self::assertStringNotContainsString('¿Confirmas', $turnos[1]['texto'], 'la pregunta la pinta el widget');
+        self::assertStringNotContainsString('agent:answer', $turnos[1]['texto'], 'y el hint es de la CLI, no de aquí');
+        self::assertSame('sistema', $turnos[1]['voz'] ?? null, 'esto no lo dijo el modelo');
+        self::assertStringContainsString('5 paso(s)', $turnos[1]['texto'], 'pero lo que costó sí se dice');
+    }
+
+    /**
+     * AGOTAR EL TECHO NO ES CONTESTAR.
+     *
+     * Se devolvía como texto, así que la pantalla lo pintaba con la voz del agente — indistinguible de
+     * algo que el modelo decidió decir. Es un estado del sistema y se pinta como tal, con la pista de
+     * qué hacer.
+     */
+    public function testRunningOutOfStepsIsNotAnAnswer(): void
+    {
+        $pantalla = $this->pantalla(static fn (string $q): array => [
+            'ok' => true,
+            'answer' => 'La vuelta se quedó sin pasos antes de terminar.',
+            'exhausted' => true,
+            'steps' => 12,
+            'tools' => 19,
+            'hint' => 'pídele que siga, o dale más pasos con `--steps`',
+        ]);
+
+        $this->teclear($pantalla, 'haz algo largo');
+        $pantalla->press('enter');
+
+        $turnos = $pantalla->conversation();
+        self::assertSame('sistema', $turnos[1]['voz'] ?? null);
+        self::assertStringContainsString('⚠', $turnos[1]['texto']);
+        self::assertStringContainsString('sin pasos', $turnos[1]['texto']);
+        self::assertStringContainsString('--steps', $turnos[1]['texto'], 'y dice qué hacer');
+    }
+
+    /** INTERRUMPIR NO ES FALLAR: es una decisión del humano, y la sesión sigue viva. */
+    public function testAnInterruptedTurnIsNotAFailure(): void
+    {
+        $pantalla = $this->pantalla(static fn (string $q): array => [
+            'ok' => true,
+            'answer' => 'La vuelta se interrumpió.',
+            'interrupted' => true,
+            'steps' => 6,
+            'tools' => 19,
+            'hint' => 'dile qué cambió y pídele que siga',
+        ]);
+
+        $this->teclear($pantalla, 'construye todo');
+        $pantalla->press('enter');
+
+        $turnos = $pantalla->conversation();
+        self::assertSame('sistema', $turnos[1]['voz'] ?? null);
+        self::assertStringContainsString('se interrumpió', $turnos[1]['texto']);
+        self::assertStringContainsString('6 paso(s)', $turnos[1]['texto'], 'cuánto alcanzó a hacer');
+        self::assertStringContainsString('pídele que siga', $turnos[1]['texto']);
+        self::assertStringNotContainsString('✗', $turnos[1]['texto'], 'no es un error');
+    }
+
+    /**
+     * ESC EN REPOSO LIMPIA EL BORRADOR Y NO CIERRA NADA.
+     *
+     * Su trabajo grande es interrumpir, y eso pasa mientras el agente trabaja —donde esta pantalla
+     * está bloqueada y no ve teclas—. Con la pantalla libre hace lo que Esc hace en cualquier campo.
+     *
+     * Tenerlo como salida hacía que el gesto natural para frenar al agente cerrara la sesión: el peor
+     * mapeo posible, porque el error es irreversible y frecuente.
+     */
+    public function testEscapeClearsTheDraftInsteadOfClosing(): void
+    {
+        $llamadas = 0;
+        $pantalla = $this->pantalla(function (string $q) use (&$llamadas): array {
+            ++$llamadas;
+
+            return ['ok' => true, 'answer' => 'ok', 'steps' => 1, 'tools' => 1];
+        });
+
+        $this->teclear($pantalla, 'esto se borra');
+        self::assertStringContainsString('esto se borra', $pantalla->render());
+
+        self::assertTrue($pantalla->press('escape'), 'la tecla se consume aquí, no cierra el bucle');
+        self::assertStringNotContainsString('esto se borra', $pantalla->render());
+
+        $pantalla->press('enter');
+        self::assertSame(0, $llamadas, 'y con el campo vacío no se le pregunta a nadie');
+    }
+
+    /** El selector se abre con `/sessions` y enseña lo que hay, sin salir de la pantalla. */
+    public function testTheSessionPickerListsWhatThereIs(): void
+    {
+        $pantalla = new AgentScreen(
+            static fn (string $q): array => ['ok' => true, 'answer' => 'ok'],
+            null,
+            null,
+            74,
+            24,
+            false,
+            catalogo: static fn (): array => [
+                ['id' => 'chat-0802-a1', 'goal' => 'un inventario', 'state' => 'viva', 'turns' => 4],
+                ['id' => 'chat-0801-b2', 'goal' => 'otra cosa', 'state' => 'terminada', 'turns' => 12],
+            ],
+        );
+
+        $this->teclear($pantalla, '/sessions');
+        $pantalla->press('enter');
+
+        // LAS CLAVES SON LAS QUE PRODUCE `Application::sesionesParaElegir()` — `state` y `turns`, no
+        // traducciones. La primera versión de esta prueba las inventó en español y la pantalla avisó
+        // con «Undefined array key»: un catálogo con otra forma pinta filas a medias y no falla.
+        $pintado = $pantalla->render();
+        self::assertStringContainsString('chat-0802-a1', $pintado);
+        self::assertStringContainsString('viva', $pintado, 'el estado de cada una');
+        self::assertStringContainsString('4 turnos', $pintado, 'y cuánto lleva');
+        self::assertStringContainsString('chat-0801-b2', $pintado);
+        self::assertStringContainsString('↑↓', $pintado, 'dice cómo se usa');
+    }
+
+    /** Sin sesiones que ofrecer, lo dice en vez de enseñar una lista vacía. */
+    public function testAnEmptyPickerSaysSo(): void
+    {
+        $pantalla = new AgentScreen(
+            static fn (string $q): array => ['ok' => true, 'answer' => 'ok'],
+            null,
+            null,
+            74,
+            24,
+            false,
+            catalogo: static fn (): array => [],
+        );
+
+        $this->teclear($pantalla, '/sessions');
+        $pantalla->press('enter');
+
+        self::assertStringContainsString('ninguna todavía', $pantalla->render());
+    }
+
+    /** Y con Esc se vuelve, que es lo que ya hacía y sigue siendo correcto con la lista abierta. */
+    public function testEscapeClosesThePicker(): void
+    {
+        $pantalla = new AgentScreen(
+            static fn (string $q): array => ['ok' => true, 'answer' => 'ok'],
+            null,
+            null,
+            74,
+            24,
+            false,
+            catalogo: static fn (): array => [['id' => 'chat-x', 'goal' => 'algo', 'state' => 'viva', 'turns' => 2]],
+        );
+
+        $this->teclear($pantalla, '/sessions');
+        $pantalla->press('enter');
+        self::assertStringContainsString('chat-x', $pantalla->render());
+
+        $pantalla->press('escape');
+        self::assertStringNotContainsString('↑↓', $pantalla->render(), 'el selector se cerró');
+    }
+
+    /** El cursor se mueve con las flechas, y no se sale de la lista por ninguno de los dos extremos. */
+    public function testThePickerCursorStaysInsideTheList(): void
+    {
+        $pantalla = new AgentScreen(
+            static fn (string $q): array => ['ok' => true, 'answer' => 'ok'],
+            null,
+            null,
+            74,
+            24,
+            false,
+            catalogo: static fn (): array => [
+                ['id' => 'uno', 'goal' => 'a', 'state' => 'viva', 'turns' => 1],
+                ['id' => 'dos', 'goal' => 'b', 'state' => 'viva', 'turns' => 1],
+            ],
+        );
+
+        $this->teclear($pantalla, '/sessions');
+        $pantalla->press('enter');
+
+        $pantalla->press('up');
+        self::assertStringContainsString('› uno', $pantalla->render(), 'arriba del primero sigue el primero');
+
+        $pantalla->press('down');
+        $pantalla->press('down');
+        self::assertStringContainsString('› dos', $pantalla->render(), 'y abajo del último sigue el último');
+    }
+
+    /**
+     * ELEGIR UNA SESIÓN LA CONTINÚA Y LIMPIA LO DE LA ANTERIOR.
+     *
+     * Cambiar de sesión no es una pregunta: es cambiar el sujeto de la conversación. Dejar en pantalla
+     * los turnos de la que se dejó atrás sería enseñar el historial de una sesión bajo el nombre de
+     * otra — y quien lo lea mañana no tendría cómo notarlo.
+     */
+    public function testPickingASessionContinuesItAndClearsWhatWasOnScreen(): void
+    {
+        $continuada = null;
+        $pantalla = new AgentScreen(
+            static fn (string $q): array => ['ok' => true, 'answer' => 'de la vieja', 'steps' => 1, 'tools' => 1],
+            null,
+            null,
+            74,
+            24,
+            false,
+            catalogo: static fn (): array => [
+                ['id' => 'chat-nueva', 'goal' => 'lo otro', 'state' => 'viva', 'turns' => 3],
+            ],
+            continuar: function (string $id) use (&$continuada): void {
+                $continuada = $id;
+            },
+        );
+
+        $this->teclear($pantalla, 'algo');
+        $pantalla->press('enter');
+        self::assertNotSame([], $pantalla->conversation(), 'había conversación');
+
+        $this->teclear($pantalla, '/sessions');
+        $pantalla->press('enter');
+        $pantalla->press('enter');
+
+        self::assertSame('chat-nueva', $continuada, 'se continuó la elegida');
+        self::assertSame([], $pantalla->conversation(), 'y la pantalla quedó limpia');
+        self::assertStringNotContainsString('↑↓', $pantalla->render(), 'el selector se cerró solo');
+    }
+
+    /**
+     * LA M GERMINA: el latido la va llenando en vez de pintarla completa de golpe.
+     *
+     * Sin el `tick` la pantalla sólo se redibuja cuando alguien teclea, y una marca que aparece entera
+     * y quieta es un dibujo. Trece granos, y de ahí no pasa.
+     */
+    public function testTheLogoGrowsWithTheHeartbeatAndThenStops(): void
+    {
+        // CON PORTADA, que es donde vive la M. Sin bienvenida no hay marca que germinar.
+        $pantalla = new AgentScreen(
+            static fn (string $q): array => ['ok' => true, 'answer' => 'ok'],
+            null,
+            null,
+            74,
+            24,
+            false,
+            ['model' => 'local:qwen', 'tools' => 3, 'session' => 'chat-x', 'nueva' => true],
+        );
+
+        // EL LATIDO SE INVOCA COMO LO INVOCA EL BUCLE. `RetainedTuiLoop::tick()` es privado —el bucle
+        // se lo llama a sí mismo—, así que lo que esta prueba puede alcanzar es el callback que la
+        // pantalla le entregó. Es la misma función, tomada del mismo sitio.
+        $latir = (new \ReflectionProperty($pantalla->loop(), 'tick'))->getValue($pantalla->loop());
+        self::assertIsCallable($latir);
+
+        $primera = $pantalla->render();
+        for ($i = 0; $i < 20; ++$i) {
+            $latir();
+        }
+        $despues = $pantalla->render();
+
+        self::assertNotSame($primera, $despues, 'el latido cambió lo que se ve');
+
+        // Y NO SIGUE CRECIENDO. Un contador sin techo desbordaría el dibujo con el tiempo.
+        for ($i = 0; $i < 50; ++$i) {
+            $latir();
+        }
+        self::assertSame(mb_strlen($despues), mb_strlen($pantalla->render()), 'la M ya está completa');
+    }
+
+    /**
+     * UNA SESIÓN RETOMADA ENSEÑA DE QUÉ SE ESTABA HABLANDO, y sólo la cola.
+     *
+     * Abrir una jornada larga con la pantalla en blanco obliga a preguntar «¿en qué íbamos?» a un
+     * sistema que ya lo sabe. Se rehidrata UNA vez: hacerlo en cada frame duplicaría los turnos.
+     */
+    public function testAResumedSessionShowsWhatWasBeingTalkedAbout(): void
+    {
+        $turnos = [];
+        foreach (range(1, 9) as $n) {
+            $turnos[] = ['role' => 'user', 'content' => "pregunta {$n}", 'seq' => $n * 2 - 1];
+            $turnos[] = ['role' => 'assistant', 'content' => "respuesta {$n}", 'seq' => $n * 2];
+        }
+
+        $sesion = new Session('vieja', 'un objetivo', turns: $turnos);
+        $pantalla = $this->pantallaDe($sesion, static fn (string $q): array => ['ok' => true, 'answer' => 'ok']);
+
+        $pintado = $pantalla->render();
+        self::assertStringContainsString('respuesta 9', $pintado, 'lo último sí');
+        self::assertStringNotContainsString('pregunta 1 ', $pintado, 'lo viejo no — la cola, no todo');
+
+        // UNA SOLA VEZ. Volver a pintar no vuelve a rehidratar.
+        $cuantos = \count($pantalla->conversation());
+        $pantalla->render();
+        self::assertSame($cuantos, \count($pantalla->conversation()));
+    }
 }
