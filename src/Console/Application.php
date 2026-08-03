@@ -281,6 +281,17 @@ final class Application
 
             [$ancho, $alto] = $this->tamano();
 
+            // EL VIGÍA SE REGISTRA ANTES DE ABRIR EL CHAT, y sólo aquí.
+            //
+            // Es lo que le deja al humano decir «para» a media vuelta: la operación lo consulta entre
+            // pasos. Va en el contenedor porque la pantalla no tiene handle sobre la operación —la
+            // llama por el registro, que devuelve un arreglo—, y es la misma vía por la que `Config` y
+            // `SessionStore` llegan hasta ahí.
+            //
+            // Sólo en `chat`: una corrida de `coa agent` desde un script no tiene humano mirando, y un
+            // vigía leyendo su STDIN se comería la entrada de la tubería.
+            $this->kernel()->container()->registerService(\App\Agent\StepWatcher::class, new \App\Agent\StepWatcher());
+
             $chat = new AgentScreen(
                 $this->preguntarAlAgente(...),
                 $this->sesionDelChat(...),
@@ -437,7 +448,7 @@ final class Application
             return $this->cambiarDeSesion(trim(mb_substr($prompt, \strlen('/sessions'))));
         }
 
-        /** @var array{ok: bool, answer?: string, steps?: int, tools?: int, compacted?: bool, error?: string, hint?: string} $r */
+        /** @var array{ok: bool, answer?: string, steps?: int, tools?: int, compacted?: bool, error?: string, hint?: string, paused?: bool, exhausted?: bool, interrupted?: bool} $r */
         $r = $this->correr('agent', ['prompt' => $prompt, 'session' => $this->sesionDelChatId])
             ?? ['ok' => false, 'error' => 'esta app no declara la operación `agent`'];
 

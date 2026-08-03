@@ -30,8 +30,8 @@
     "php": ">=8.3"
   },
   "conflict": {
-    "milpa/agent": "<0.4",
-    "milpa/ai-gateway": "<0.7",
+    "milpa/agent": "<0.5",
+    "milpa/ai-gateway": "<0.8",
     "milpa/live-tui": "<0.4"
   },
   "require-dev": {

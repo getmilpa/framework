@@ -48,11 +48,19 @@ use Milpa\Live\ValueObjects\Tui\TuiNode;
  */
 final class AgentScreen implements SurfaceBroadcaster
 {
+    /**
+     * Los cuadros del indicador mientras hay trabajo.
+     *
+     * Braille y no puntos: ocupa una celda, gira sin saltar, y se distingue de cualquier carácter que
+     * el modelo pueda escribir — un spinner que se confunde con el contenido deja de informar.
+     */
+    private const PULSO = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
     private readonly RetainedTuiLoop $loop;
 
     private string $entrada = '';
 
-    /** @var list<array{quien: string, texto: string}> */
+    /** @var list<array{quien: string, texto: string, voz?: string}> */
     private array $conversacion = [];
 
     /**
@@ -72,7 +80,20 @@ final class AgentScreen implements SurfaceBroadcaster
      * chat ya estaba mirando. Lo que germina en cada frame es el spinner del trabajo, no el logo —
      * una marca que se re-dibuja sola cada vez distrae de lo que sí está cambiando.
      */
-    private int $granos = 13;
+    private int $granos = 0;
+
+    /** Late en cada tick. De aquí sale el cuadro del spinner mientras el agente trabaja. */
+    private int $pulso = 0;
+
+    /**
+     * Lo último que una herramienta contestó, ya con forma de tabla, o `null` si no la tenía.
+     *
+     * @var array{columnas: list<string>, filas: list<array<string, string>>}|null
+     */
+    private ?array $tabla = null;
+
+    /** De qué herramienta salió la tabla de arriba. */
+    private ?string $tablaDe = null;
 
     /** Los tokens que esta sesión lleva gastados, tal como los reporta cada vuelta. */
     private int $tokensGastados = 0;
@@ -100,12 +121,12 @@ final class AgentScreen implements SurfaceBroadcaster
     private ?string $ultimoCosto = null;
 
     /**
-     * @param \Closure(string): array{ok: bool, answer?: string, steps?: int, tools?: int, compacted?: bool, error?: string, hint?: string} $responder
-     * @param \Closure(): (Session|null)|null                                                                                               $sesion    la sesión en curso, releída
-     *                                                                                                                                                 en cada frame — cambia
-     *                                                                                                                                                 después de cada vuelta
-     * @param \Closure(string): array{ok: bool, granted?: string|null, error?: string}|null                                                 $contestar cómo se responde una
-     *                                                                                                                                                 pregunta pendiente
+     * @param \Closure(string): array{ok: bool, answer?: string, steps?: int, tools?: int, compacted?: bool, error?: string, hint?: string, paused?: bool, exhausted?: bool, interrupted?: bool} $responder
+     * @param \Closure(): (Session|null)|null                                                                                                                                                    $sesion    la sesión en curso, releída
+     *                                                                                                                                                                                                      en cada frame — cambia
+     *                                                                                                                                                                                                      después de cada vuelta
+     * @param \Closure(string): array{ok: bool, granted?: string|null, error?: string}|null                                                                                                      $contestar cómo se responde una
+     *                                                                                                                                                                                                      pregunta pendiente
      */
     public function __construct(
         private readonly \Closure $responder,
@@ -137,21 +158,53 @@ final class AgentScreen implements SurfaceBroadcaster
             $this->height,
             $ansi,
             fn (string $key, RetainedTuiLoop $loop): bool => $this->handleKey($key, $loop),
-            // Sin `q` entre las teclas de salida: el default del tier la incluye —lo que un dashboard
-            // quiere— y aquí se teclea texto. Con ella, una `q` escrita en un campo cerraba la
-            // pantalla en vez de escribirse, y no había forma de teclear «query» ni «plugin».
-            quitKeys: ['escape', 'ctrl+c'],
+            // EL LATIDO. Sin él la pantalla sólo se redibuja cuando alguien teclea: la M salía
+            // completa y quieta —trece granos de golpe— y el estado no podía tener movimiento. Una
+            // marca que no germina es un dibujo; germinando es lo que esta casa dice de sí misma.
+            tick: function (): void {
+                if ($this->granos < 13) {
+                    ++$this->granos;
+                }
+                ++$this->pulso;
+            },
+            // SIN `escape` Y SIN `q`.
+            //
+            // `q` porque aquí se teclea texto: con ella, una `q` escrita en un campo cerraba la
+            // pantalla y no había forma de teclear «query» ni «plugin».
+            //
+            // `escape` porque Esc es la tecla de INTERRUMPIR, no la de salir. Mientras el agente
+            // trabaja, {@see \App\Agent\StepWatcher} la lee entre pasos y detiene la vuelta; con la
+            // pantalla en reposo, limpia lo escrito. Salir es Ctrl-C, que es lo que una terminal ya
+            // enseña. Tenerla como salida hacía que el gesto natural para frenar al agente cerrara la
+            // sesión — el peor mapeo posible, porque el error es irreversible y frecuente.
+            quitKeys: ['ctrl+c'],
         );
     }
 
     private static function renderers(): TuiNodeRendererRegistry
     {
         $registry = new TuiNodeRendererRegistry();
+        // TODO LO QUE LA SUPERFICIE PUEDE PINTAR, registrado.
+        //
+        // `live-tui` publica veinticuatro renderers y esta pantalla usaba cinco: la respuesta del
+        // agente llegaba como texto plano —sin negritas, sin listas, sin bloques de código— porque
+        // `MarkdownRenderer` nunca se registró, y no había forma de enseñar una tabla ni un estado
+        // con color. Un árbol que declara un nodo que ningún renderer atiende se pinta como nada, y
+        // ésa es la manera más silenciosa de que una capacidad no llegue a nadie (ADR-0038).
+        //
+        // Operar a un agente es ENTENDER qué está haciendo, y para eso la pantalla tiene que poder
+        // distinguir: lo que él dice (markdown), lo que una herramienta devolvió (tabla), en qué
+        // estado está (badge con color) y cuánto lleva (barra).
         $registry->register(new TextRenderer());
-        // La M de Milpa germinando: sin su renderer, el nodo existe y se pinta como nada — el
-        // defecto silencioso de siempre, un árbol que declara algo que ningún renderer atiende.
         $registry->register(new \Milpa\Live\Tui\NodeRenderers\MilpaLogoRenderer());
         $registry->register(new \Milpa\Live\Tui\NodeRenderers\SpacerRenderer());
+        $registry->register(new \Milpa\Live\Tui\NodeRenderers\MarkdownRenderer());
+        $registry->register(new \Milpa\Live\Tui\NodeRenderers\DataTableRenderer());
+        $registry->register(new \Milpa\Live\Tui\NodeRenderers\BadgeRenderer());
+        $registry->register(new \Milpa\Live\Tui\NodeRenderers\DividerRenderer());
+        $registry->register(new \Milpa\Live\Tui\NodeRenderers\LoaderRenderer());
+        $registry->register(new \Milpa\Live\Tui\NodeRenderers\ProgressBarRenderer());
+        $registry->register(new \Milpa\Live\Tui\NodeRenderers\ContainerRenderer());
         $registry->register(new BoxRenderer());
         // La barra de estado viene del catálogo de componentes de `milpa/live-tui`, no de aquí: una
         // pantalla que dibuja su propia barra es una barra que se ve distinta en cada pantalla.
@@ -188,6 +241,17 @@ final class AgentScreen implements SurfaceBroadcaster
 
         $estado = $payload['activity']['state'] ?? null;
         $detalle = $payload['activity']['detail'] ?? null;
+
+        // LA PANTALLA ARMA LA VISTA DEL DATO, no repite la transcripción del modelo.
+        //
+        // Un `plugins_list` devuelve una lista de objetos con las mismas llaves — eso es una tabla, y
+        // enseñarla como tabla es la diferencia entre mirar datos y leer el JSON que el modelo copió
+        // en su respuesta. Si no parsea o no tiene forma de tabla, no se inventa ninguna: se queda
+        // como estaba.
+        if ($estado === 'tool') {
+            $this->tabla = $this->tablaDe($payload['activity']['result'] ?? null);
+            $this->tablaDe = \is_string($detalle) ? $detalle : null;
+        }
 
         $this->anunciar(match ($estado) {
             'tool' => '  ' . (\is_string($detalle) ? $detalle : 'herramienta')
@@ -262,6 +326,24 @@ final class AgentScreen implements SurfaceBroadcaster
 
     private function handleKey(string $key, RetainedTuiLoop $loop): bool
     {
+        // ESC EN REPOSO LIMPIA LO ESCRITO.
+        //
+        // Su trabajo grande es interrumpir, y eso pasa mientras el agente trabaja —lo lee
+        // {@see \App\Agent\StepWatcher} entre pasos, porque en ese rato esta pantalla está bloqueada
+        // y no ve teclas—. Con la pantalla en reposo no hay nada que interrumpir, así que hace lo que
+        // Esc hace en cualquier campo de texto: borra el borrador.
+        //
+        // Se comprueba que el selector esté cerrado porque con la lista abierta Esc la cierra, que es
+        // lo que ya hacía y sigue siendo lo correcto.
+        if (!$this->eligiendoSesion && $key === 'escape') {
+            if ($this->entrada !== '') {
+                $this->entrada = '';
+                $this->loop->repintarTodo();
+            }
+
+            return true;
+        }
+
         // EL SELECTOR MANDA MIENTRAS ESTÁ ABIERTO. Escribir con una lista enfrente sería teclear a
         // ciegas contra dos destinos a la vez.
         if ($this->eligiendoSesion) {
@@ -361,6 +443,7 @@ final class AgentScreen implements SurfaceBroadcaster
             $eco = ($this->contestar)($pregunta);
             $this->conversacion[] = [
                 'quien' => 'agente',
+                'voz' => 'sistema',
                 'texto' => ($eco['ok'])
                     ? '✓ contestado' . (($eco['granted'] ?? null) !== null ? ' · autorizado: ' . $eco['granted'] : '')
                         . ' — pídeme que siga'
@@ -404,14 +487,57 @@ final class AgentScreen implements SurfaceBroadcaster
                 . (($respuesta['compacted'] ?? false) ? ' · se compactó' : '');
         }
 
+        $paso = '   [' . (int) ($respuesta['steps'] ?? 0) . ' paso(s) · ' . (int) ($respuesta['tools'] ?? 0) . ' herramientas]';
+
+        // UNA PREGUNTA ABIERTA NO SE PINTA DOS VECES.
+        //
+        // Cuando la vuelta termina pausada, el texto de la respuesta ES la pregunta — y abajo el
+        // widget la pinta otra vez, con sus opciones. Salían las dos, idénticas, y la de arriba sin
+        // botones. Aquí se deja SÓLO el widget, que es el que se puede contestar.
+        //
+        // Se decide por `paused`, que la operación declara, y no leyendo la cadena: adivinar el estado
+        // por el contenido del texto es el tipo de inferencia que se rompe cuando alguien reescribe una
+        // frase.
+        // INTERRUMPIR NO ES FALLAR, y se pinta como lo que fue: una decisión del humano. Con la voz
+        // del sistema, porque esto no lo dijo el modelo.
+        if (($respuesta['interrupted'] ?? false) === true) {
+            $this->conversacion[] = [
+                'quien' => 'agente',
+                'voz' => 'sistema',
+                'texto' => '⏹ la vuelta se interrumpió' . $paso
+                    . (($respuesta['hint'] ?? null) !== null ? "\n  " . $respuesta['hint'] : ''),
+            ];
+
+            return;
+        }
+
+        if (($respuesta['paused'] ?? false) === true) {
+            $this->conversacion[] = [
+                'quien' => 'agente',
+                'voz' => 'sistema',
+                'texto' => '⏸ la vuelta se detuvo a preguntar' . $paso,
+            ];
+
+            return;
+        }
+
         $this->conversacion[] = $respuesta['ok']
             ? [
                 'quien' => 'agente',
-                'texto' => (string) ($respuesta['answer'] ?? '')
-                    . '   [' . (int) ($respuesta['steps'] ?? 0) . ' paso(s) · ' . (int) ($respuesta['tools'] ?? 0) . ' herramientas]',
+                // AGOTAR EL TECHO NO TIENE LA VOZ DEL AGENTE. Es un estado del sistema, y pintarlo
+                // como prosa del modelo lo volvía indistinguible de algo que el agente decidió decir.
+                'voz' => ($respuesta['exhausted'] ?? false) === true ? 'sistema' : null,
+                'texto' => (($respuesta['exhausted'] ?? false) === true ? '⚠ ' : '')
+                    . (string) ($respuesta['answer'] ?? '')
+                    . ((($respuesta['exhausted'] ?? false) === true && ($respuesta['hint'] ?? null) !== null)
+                        ? "\n  " . $respuesta['hint'] : '')
+                    . $paso,
             ]
             : [
                 'quien' => 'agente',
+                // `sistema` y no `agente`: esto no lo escribió el modelo, y rendirlo como markdown
+                // se comería justo lo que hay que copiar — un nombre de variable, una ruta.
+                'voz' => 'sistema',
                 // El motivo y la pista, tal cual vienen: quien las lee necesita esa frase para saber
                 // qué arreglar, y reformularla la empeora.
                 'texto' => '✗ ' . ($respuesta['error'] ?? 'no pudo contestar')
@@ -437,6 +563,116 @@ final class AgentScreen implements SurfaceBroadcaster
                 && $sesion->todos === []);
     }
 
+    /**
+     * Cómo se llama lo que está pasando — dos palabras, no una frase.
+     *
+     * El badge es angosto a propósito: es lo que se lee de reojo. La frase completa vive en la barra
+     * de al lado, que sí tiene sitio para el nombre de la herramienta.
+     */
+    private function etiquetaDeEstado(): string
+    {
+        if ($this->actividad === null) {
+            return 'listo';
+        }
+        if (str_contains($this->actividad, 'preguntando')) {
+            return 'pensando';
+        }
+
+        return str_contains($this->actividad, 'toca algo') ? 'mutando' : 'mirando';
+    }
+
+    /**
+     * El rol semántico del estado, que es lo que le da color.
+     *
+     * `warning` para lo que MUTA y `info` para lo que sólo mira: la distinción que este programa
+     * lleva un mes midiendo tiene que verse sin leer. Verde cuando no está haciendo nada, porque
+     * «listo» es el único estado en que nadie tiene que vigilar la pantalla.
+     */
+    private function rolDeEstado(): string
+    {
+        return match ($this->etiquetaDeEstado()) {
+            'listo' => 'success',
+            'mutando' => 'warning',
+            'pensando' => 'neutral',
+            default => 'info',
+        };
+    }
+
+    /**
+     * Convierte lo que una herramienta contestó en una tabla, o devuelve `null` si no la tiene.
+     *
+     * Reconoce la forma, no la herramienta: **una lista de objetos con llaves en común es una
+     * tabla**, venga de `plugins_list`, de `capabilities` o de una operación que un plugin declaró
+     * ayer. Atarlo a nombres conocidos habría dejado fuera todo lo que esta app no conoce todavía,
+     * que es justo lo que un framework extensible no puede hacer.
+     *
+     * Devuelve `null` sin ruido cuando el texto no parsea —viene recortado por el stream—, cuando no
+     * hay ninguna lista, o cuando sus elementos no comparten llaves. Un resultado a medias es un
+     * texto: fingir una tabla sería inventar filas que nadie devolvió.
+     *
+     * @return array{columnas: list<string>, filas: list<array<string, string>>}|null
+     */
+    private function tablaDe(mixed $crudo): ?array
+    {
+        if (!\is_string($crudo) || trim($crudo) === '') {
+            return null;
+        }
+
+        $doc = json_decode($crudo, true);
+        if (!\is_array($doc)) {
+            return null;
+        }
+
+        // La lista puede ser la raíz o vivir bajo una llave —`{"plugins": [...]}`— y se toma la
+        // PRIMERA que sirva: el resultado de una operación trae su veredicto al lado (`ok`, `total`)
+        // y la lista es lo único que se puede tabular.
+        $candidatas = array_is_list($doc) ? [$doc] : array_values(array_filter($doc, '\is_array'));
+
+        foreach ($candidatas as $lista) {
+            if (!array_is_list($lista) || \count($lista) === 0) {
+                continue;
+            }
+
+            /** @var list<string> $columnas */
+            $columnas = [];
+            /** @var list<array<string, string>> $filas */
+            $filas = [];
+            $primera = true;
+            foreach ($lista as $fila) {
+                if (!\is_array($fila) || array_is_list($fila)) {
+                    continue 2;   // una lista de escalares no es una tabla
+                }
+                $planas = array_filter($fila, static fn ($v): bool => !\is_array($v));
+                $llaves = array_map('strval', array_keys($planas));
+                $columnas = $primera ? $llaves : array_values(array_intersect($columnas, $llaves));
+                $primera = false;
+                $filas[] = array_map(
+                    static fn ($v): string => \is_bool($v) ? ($v ? 'sí' : 'no') : (string) ($v ?? '—'),
+                    $planas,
+                );
+            }
+
+            if ($columnas === []) {
+                continue;
+            }
+
+            // Cuatro columnas como mucho: una tabla que no cabe en la pantalla deja de ser una
+            // tabla. Las que quedan son las primeras que la herramienta declaró, que es el orden en
+            // que ella misma las considera importantes.
+            $columnas = \array_slice($columnas, 0, 4);
+
+            return [
+                'columnas' => $columnas,
+                'filas' => array_map(
+                    static fn (array $f): array => array_intersect_key($f, array_flip($columnas)),
+                    \array_slice($filas, 0, 12),
+                ),
+            ];
+        }
+
+        return null;
+    }
+
     /** La portada: la M germinando, con qué se está trabajando, y por dónde empezar. */
     private function portada(): TuiNode
     {
@@ -459,9 +695,13 @@ final class AgentScreen implements SurfaceBroadcaster
         ];
 
         $pie = [
-            new TuiNode('estado', 'text', props: ['text' => $this->actividad === null ? '○ listo' : '◆ ' . $this->actividad]),
+            new TuiNode('estado', 'badge', props: [
+                'label' => $this->etiquetaDeEstado(),
+                'role' => $this->rolDeEstado(),
+                'width' => 16,
+            ]),
             new TuiNode('prompt', 'text', props: ['text' => '› ' . $this->entrada . '▏'], focusable: true),
-            new TuiNode('pie', 'text', props: ['text' => '[Enter] preguntar · [Esc] salir']),
+            new TuiNode('pie', 'text', props: ['text' => '[Enter] preguntar · [Esc] limpiar · [Ctrl-C] salir']),
         ];
 
         $lema = [
@@ -642,20 +882,49 @@ final class AgentScreen implements SurfaceBroadcaster
         //
         // Se conserva el FINAL: lo último que dijo el agente es lo que hay que leer. Lo que se va no
         // se pierde —está en el stream, que es la bitácora— pero la pantalla tiene un tamaño.
+        // CADA VOZ SE VE DISTINTA, y no es cosmética: en una pantalla donde todo se pinta igual hay
+        // que LEER para saber quién habló, y operar un agente es poder distinguir de un vistazo lo
+        // que uno pidió de lo que él contestó. Lo del humano lleva su marca `›`; lo del agente se
+        // rinde como markdown —negritas, listas, bloques de código— que es como el modelo escribe.
         $lineas = [];
         foreach (\array_slice($this->conversacion, -6) as $i => $turno) {
-            $marca = $turno['quien'] === 'tú' ? '› ' : '  ';
+            // TRES VOCES Y NO DOS. Lo que dice el MODELO es markdown y se rinde como tal; lo que
+            // dice el SISTEMA —un error, una confirmación— es literal y se pinta crudo. Mezclarlas
+            // costó ver `ANTHROPIC_API_KEY` convertido en `ANTHROPICAPIKEY`: markdown leyó los
+            // guiones bajos como énfasis y se comió el nombre de la variable que hacía falta poner.
+            $voz = $turno['voz'] ?? ($turno['quien'] === 'tú' ? 'humano' : 'agente');
             foreach (explode("\n", $turno['texto']) as $j => $linea) {
-                $lineas[] = ["turno:{$i}:{$j}", ($j === 0 ? $marca : '  ') . $linea];
+                $lineas[] = [
+                    "turno:{$i}:{$j}",
+                    ($j === 0 ? ($voz === 'humano' ? '› ' : '  ') : '  ') . $linea,
+                    $voz,
+                ];
             }
         }
 
         // El presupuesto: el alto menos lo que SIEMPRE se pinta —título, estado, separadores, prompt
         // y ayuda— con holgura. Nunca menos de tres: una pantalla diminuta debe mostrar algo, no
         // vaciarse por aritmética.
-        $presupuesto = max(3, $this->height - \count($hijos) - 8);
-        foreach (\array_slice($lineas, -$presupuesto) as [$id, $texto]) {
-            $hijos[] = new TuiNode($id, 'text', props: ['text' => $texto]);
+        // EL CHROME SE CUENTA, NO SE ADIVINA. Este margen era una constante —8— y ya me mordió tres
+        // veces: cada vez que la pantalla gana una línea fija (la barra de estado, el badge, una
+        // ayuda) el número queda corto y el árbol desborda, que en este motor no es un recorte sino
+        // una pantalla en blanco. Se derivan las que se van a pintar DESPUÉS de la conversación.
+        // LA TABLA, si la última herramienta devolvió una. Va DESPUÉS de la conversación y antes
+        // del estado: es lo más reciente que se sabe del sistema, y lo que alguien mira para decidir
+        // qué pedir después. Cuesta su alto —cabecera, filas, caption— y por eso entra en el chrome:
+        // una tabla que desborda deja la pantalla en blanco, y ya van tres veces con ese cálculo.
+        $altoTabla = $this->tabla !== null ? min(\count($this->tabla['filas']), 8) + 3 : 0;
+
+        // separador · badge · barra de estado · prompt · ayuda, más aire; y tres más si hay una
+        // pregunta esperando, que se pinta con su motivo y sus opciones.
+        $chrome = 7 + ($sesion?->question !== null ? 3 : 0) + $altoTabla;
+        $presupuesto = max(3, $this->height - \count($hijos) - $chrome);
+        foreach (\array_slice($lineas, -$presupuesto) as [$id, $texto, $voz]) {
+            $hijos[] = $voz === 'agente'
+                // `markdown` y no `text`: el modelo escribe con negritas, listas y bloques de
+                // código, y pintarlo plano descarta información que él sí puso.
+                ? new TuiNode($id, 'markdown', props: ['content' => $texto, 'wrap' => false])
+                : new TuiNode($id, 'text', props: ['text' => $texto]);
         }
 
         $hijos[] = new TuiNode('separador', 'text', props: ['text' => str_repeat('─', 40)]);
@@ -680,8 +949,29 @@ final class AgentScreen implements SurfaceBroadcaster
         // Compartirlo tenía un costo que no se ve hasta que pasa: mientras el agente trabaja, lo que
         // uno escribió desaparece de la pantalla. La barra dice en qué está el sistema; el renglón de
         // abajo sigue siendo tuyo.
+        // EL ESTADO CON COLOR Y CON MOVIMIENTO, porque «¿sigue vivo?» se contesta mirando, no
+        // leyendo. El badge lleva el rol semántico —quien pinta le da su color— y el indicador gira
+        // mientras hay trabajo: un carácter que cambia es actividad observable; uno fijo, no.
+        if ($this->tabla !== null && $altoTabla > 0) {
+            $hijos[] = new TuiNode('tabla', 'data-table', props: [
+                'columns' => array_map(
+                    static fn (string $c): array => ['key' => $c, 'label' => $c],
+                    $this->tabla['columnas'],
+                ),
+                'rows' => \array_slice($this->tabla['filas'], 0, 8),
+                'caption' => $this->tablaDe !== null ? 'lo que devolvió ' . $this->tablaDe : '',
+                'showHeader' => true,
+                'height' => $altoTabla,
+            ]);
+        }
+
+        $hijos[] = new TuiNode('estado-insignia', 'badge', props: [
+            'label' => $this->etiquetaDeEstado(),
+            'role' => $this->rolDeEstado(),
+            'width' => 16,
+        ]);
         $hijos[] = new TuiNode('estado-barra', 'status-bar', props: [
-            'indicator' => $this->actividad !== null ? '◆' : '○',
+            'indicator' => $this->actividad !== null ? self::PULSO[$this->pulso % \count(self::PULSO)] : '○',
             'left' => $this->actividad ?? 'listo',
             // A la derecha lo que costó la última vuelta, que es la otra pregunta que uno se hace
             // mirando una pantalla: no sólo «¿está viva?», también «¿cuánto lleva?».
@@ -693,8 +983,8 @@ final class AgentScreen implements SurfaceBroadcaster
         ]);
         $hijos[] = new TuiNode('ayuda', 'text', props: [
             'text' => $pendiente !== null
-                ? '  [Enter] contestar · [Esc] volver'
-                : '  [Enter] preguntar · [Esc] volver',
+                ? '  [Enter] contestar · [Esc] limpiar · [Ctrl-C] salir'
+                : '  [Enter] preguntar · [Esc] limpiar · [Ctrl-C] salir',
         ]);
 
         return new TuiNode('root', 'box', props: ['title' => 'coa · agent'], children: $hijos);

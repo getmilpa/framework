@@ -529,15 +529,22 @@ final class AgentScreenTest extends TestCase
 
         $sinColor = static fn (string $s): string => (string) preg_replace('/\e\[[0-9;]*m/', '', $s);
 
-        self::assertStringContainsString('○ listo', $sinColor($pantalla->render()), 'en reposo lo dice');
+        // El estado es un BADGE con rol semántico: quien pinta le da color, y se lee de reojo.
+        self::assertStringContainsString('listo', $sinColor($pantalla->render()), 'en reposo lo dice');
 
         $pantalla->broadcast('t', ['kind' => 'activity', 'activity' => [
             'state' => 'tool', 'detail' => 'plugins_list', 'mutating' => true,
         ]]);
 
         $pintado = $sinColor($pantalla->render());
-        self::assertStringContainsString('◆ plugins_list', $pintado);
+        self::assertStringContainsString('plugins_list', $pintado, 'qué herramienta corre');
+        self::assertStringContainsString('mutando', $pintado, 'el badge nombra el estado, y su rol le da color');
         self::assertStringContainsString('toca algo', $pintado, 'y se distingue la que muta');
+        self::assertMatchesRegularExpression(
+            '/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/u',
+            $pintado,
+            'el indicador GIRA: un carácter que cambia es actividad observable, uno fijo no',
+        );
         self::assertStringContainsString('› h', $pintado, 'lo escrito NO desaparece mientras trabaja');
     }
 
@@ -597,6 +604,71 @@ final class AgentScreenTest extends TestCase
 
         self::assertStringContainsString('renglon-80', $pintado, 'lo ultimo es lo que importa');
         self::assertStringNotContainsString('renglon-1 ', $pintado, 'y lo viejo cede el lugar');
+    }
+
+    /**
+     * LO QUE UNA HERRAMIENTA DEVUELVE SE ARMA COMO TABLA, no se transcribe.
+     *
+     * Es la diferencia entre mirar datos y leer el JSON que el modelo copió en su respuesta. Se
+     * reconoce por FORMA —una lista de objetos con llaves en común— y no por el nombre de la
+     * herramienta: atarlo a nombres conocidos dejaría fuera todo lo que un plugin declare mañana.
+     */
+    public function testAToolResultWithTableShapeIsPaintedAsATable(): void
+    {
+        $pantalla = $this->pantalla(static fn (string $q): array => ['ok' => true]);
+        $pantalla->loop()->dispatchKey('h');
+
+        $pantalla->broadcast('t', ['kind' => 'activity', 'activity' => [
+            'state' => 'tool',
+            'detail' => 'plugins_list',
+            'result' => json_encode(['plugins' => [
+                ['name' => 'HelloPlugin', 'version' => '0.1.0', 'enabled' => true],
+                ['name' => 'OperationsHttp', 'version' => '0.1.0', 'enabled' => false],
+            ]]),
+        ]]);
+
+        $pintado = (string) preg_replace('/\e\[[0-9;]*m/', '', $pantalla->render());
+
+        self::assertStringContainsString('HelloPlugin', $pintado);
+        self::assertStringContainsString('OperationsHttp', $pintado, 'las dos filas, no sólo la primera');
+        self::assertStringContainsString('name', $pintado, 'con la cabecera que la herramienta declaró');
+        self::assertStringContainsString('plugins_list', $pintado, 'y de qué herramienta salió');
+    }
+
+    /** Un resultado sin forma de tabla NO inventa una: un texto es un texto. */
+    public function testAResultWithoutTableShapeInventsNothing(): void
+    {
+        foreach (['no soy json', '{"ok":true}', '{"lista":[1,2,3]}', '', '{"a":{"b":1}}'] as $crudo) {
+            $pantalla = $this->pantalla(static fn (string $q): array => ['ok' => true]);
+            $pantalla->broadcast('t', ['kind' => 'activity', 'activity' => [
+                'state' => 'tool', 'detail' => 'algo', 'result' => $crudo,
+            ]]);
+
+            $pintado = (string) preg_replace('/\e\[[0-9;]*m/', '', $pantalla->render());
+
+            self::assertStringNotContainsString(
+                'lo que devolvió',
+                $pintado,
+                "«{$crudo}» no tiene forma de tabla y no debe producir una",
+            );
+        }
+    }
+
+    /** Un resultado RECORTADO por el stream tampoco: media tabla seria filas inventadas. */
+    public function testATruncatedResultIsNotATable(): void
+    {
+        $pantalla = $this->pantalla(static fn (string $q): array => ['ok' => true]);
+        $pantalla->broadcast('t', ['kind' => 'activity', 'activity' => [
+            'state' => 'tool',
+            'detail' => 'plugins_list',
+            // Como lo deja `SessionToolGate::MAX_RESULT` cuando el JSON pasa de 600 caracteres.
+            'result' => '{"plugins":[{"name":"HelloPlugin","version":"0.1.0"},{"name":"Operations',
+        ]]);
+
+        self::assertStringNotContainsString(
+            'lo que devolvió',
+            (string) preg_replace('/\e\[[0-9;]*m/', '', $pantalla->render()),
+        );
     }
 
     private ?AgentScreen $pantallaActual = null;

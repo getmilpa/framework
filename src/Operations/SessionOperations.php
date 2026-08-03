@@ -131,7 +131,10 @@ final class SessionOperations implements CommandProvider
             ),
             new Operation(
                 name: 'agent:answer',
-                description: 'Answer the question that paused a session, and resume it',
+                // NO DICE «and resume it», y antes sí. Contestar apenda la respuesta y devuelve el hint
+                // para retomar; el bucle NO se vuelve a correr. La descripción prometía lo que la
+                // operación no hace, y en el TUI eso se sentía como un agente que se quedó callado.
+                description: 'Answer the question that paused a session; it does not resume the loop',
                 // EL CONTEXTO VIAJA POR EL MISMO CAMINO QUE LA INVOCACIÓN, no por el contenedor.
                 // Un handler que lo lee del ambiente puede olvidarse de leerlo y seguir funcionando,
                 // y el contenedor puede conservar el actor de la petición anterior.

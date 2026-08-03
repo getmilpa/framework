@@ -275,11 +275,13 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
         if ($pregunta->why !== null) {
             $linea .= "\n  con: " . $pregunta->why;
         }
-        if ($pregunta->options !== []) {
-            $linea .= "\n  contesta con: coa agent:answer {$this->session->id} <"
-                . implode('|', $pregunta->options) . '>';
-        }
-
+        // AQUÍ NO SE DICE CÓMO CONTESTAR, y antes sí: la línea `contesta con: coa agent:answer …`
+        // viajaba dentro del texto de la pausa, así que aparecía TAMBIÉN dentro del TUI — una
+        // instrucción de shell en una superficie donde se contesta con Enter, mandando a la gente
+        // fuera de la pantalla donde ya le estaban preguntando.
+        //
+        // La pregunta y sus opciones son del dominio; **cómo se contesta es de cada superficie**. La
+        // CLI lo pone en su `hint`, que es el campo que existe para eso; el TUI pinta su widget.
         return $linea;
     }
 

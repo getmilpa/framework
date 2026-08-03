@@ -70,7 +70,13 @@ final class SessionToolGateTest extends TestCase
         self::assertNotNull($motivo);
         self::assertStringContainsString('make', $motivo);
         self::assertStringContainsString('Cobranza', $motivo, 'la negativa dice sobre QUÉ');
-        self::assertStringContainsString('agent:answer', $motivo, 'y cómo contestarla');
+        // CÓMO SE CONTESTA YA NO VIENE AQUÍ, y es deliberado: esa línea viajaba dentro del texto de
+        // la pausa, así que una instrucción de shell aparecía TAMBIÉN dentro del TUI, mandando a la
+        // gente fuera de la pantalla donde le estaban preguntando. La pregunta y sus opciones son del
+        // dominio; cómo se contesta lo pone cada superficie —la CLI en su `hint`, el TUI en su widget.
+        self::assertStringNotContainsString('agent:answer', $motivo, 'cómo contestar es de la superficie');
+        self::assertNotNull($almacen->load('s1')?->question, 'pero la pregunta sí quedó abierta');
+        self::assertSame(['sí', 'no'], $almacen->load('s1')?->question?->options, 'con sus opciones, que es lo que la superficie necesita');
 
         $sesion = $almacen->load('s1');
         self::assertNotNull($sesion);

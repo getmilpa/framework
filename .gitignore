@@ -7,3 +7,13 @@
 /composer.lock
 /.php-cs-fixer.cache
 /.phpunit.cache/
+
+# LOS STREAMS DE SESIÓN SON ESTADO DE EJECUCIÓN, y se colaron una vez: correr las pruebas dejaba
+# `var/agent-sessions.jsonl` con sesiones de prueba dentro del paquete. El allowlist de
+# `export-framework.sh` no publica `var/`, así que nunca llegó a nadie — pero el monorepo se llenaba
+# de evidencia de laboratorio indistinguible de código.
+#
+# Se ignora el CONTENIDO y se conserva el directorio, por lo mismo que `storage/`: git no versiona
+# directorios vacíos, y una app sin `var/` no tiene dónde escribir su primera sesión.
+var/*
+!var/.gitignore

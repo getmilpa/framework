@@ -102,6 +102,7 @@ final class AgentOperationTest extends TestCase
                 ?\Milpa\AiGateway\ToolCallGate $gate = null,
                 ?\Milpa\AiGateway\OptionTable $mesa = null,
                 ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\AiGateway\PlanBoard $tablero = null,
             ): string {
                 $onStep();
                 $onStep();
@@ -184,6 +185,7 @@ final class AgentOperationTest extends TestCase
                 ?\Milpa\AiGateway\ToolCallGate $gate = null,
                 ?\Milpa\AiGateway\OptionTable $mesa = null,
                 ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\AiGateway\PlanBoard $tablero = null,
             ): string {
                 static::$visto = ['proveedor' => $proveedor, 'llave' => $llave, 'modelo' => $modelo];
 
@@ -318,6 +320,7 @@ final class AgentOperationTest extends TestCase
                     ?\Milpa\AiGateway\ToolCallGate $gate = null,
                     ?\Milpa\AiGateway\OptionTable $mesa = null,
                     ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                    ?\Milpa\AiGateway\PlanBoard $tablero = null,
                 ): string {
                     static::$visto = ['proveedor' => $proveedor, 'llave' => $llave, 'modelo' => $modelo];
 
@@ -512,6 +515,7 @@ final class AgentOperationTest extends TestCase
                 ?\Milpa\AiGateway\ToolCallGate $gate = null,
                 ?\Milpa\AiGateway\OptionTable $mesa = null,
                 ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\AiGateway\PlanBoard $tablero = null,
             ): string {
                 $this->historialVisto = $history;
                 $onStep();
@@ -783,6 +787,7 @@ final class AgentOperationTest extends TestCase
                 ?\Milpa\AiGateway\ToolCallGate $gate = null,
                 ?\Milpa\AiGateway\OptionTable $mesa = null,
                 ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\AiGateway\PlanBoard $tablero = null,
             ): string {
                 $this->historialVisto = $history;
                 $onStep();
@@ -821,5 +826,112 @@ final class AgentOperationTest extends TestCase
         $ventana = $leer(['agent' => ['permissionWindow' => 'PT8H']]);
         self::assertInstanceOf(\DateInterval::class, $ventana);
         self::assertSame(8, $ventana->h);
+    }
+
+    /**
+     * CONTROL POSITIVO DE Q-P20-B: con la perilla encendida, el bucle SÍ recibe un tablero.
+     *
+     * Sin esta prueba la tanda no se puede leer. Si el cableado estuviera roto, el brazo de la
+     * intervención correría idéntico al de control, la diferencia daría cero, y ese cero se leería
+     * como «reproyectar el plan no sirve» — la conclusión más cara posible sobre un instrumento que
+     * nunca se ejerció. ADR-0029 y ADR-0033: un cero de un instrumento no probado contra un caso
+     * positivo no es un hallazgo, es silencio.
+     *
+     * Por eso la prueba trae su propio negativo, y por eso mira las TRES puertas: la perilla, la
+     * sesión y el almacén. Cada una devuelve `null` por su cuenta, y las tres se ven igual desde
+     * afuera.
+     */
+    public function testLaPerillaDeReproyeccionLlegaAlBucle(): void
+    {
+        $almacen = new \Milpa\Agent\SessionStore(new \Milpa\EventStore\InMemoryEventStore());
+
+        self::assertNotNull($this->tableroCon(true, 's1', $almacen), 'con la perilla encendida');
+        self::assertNull($this->tableroCon(false, 's1', $almacen), 'apagada, nada');
+        self::assertNull($this->tableroCon(true, '', $almacen), 'sin sesión, nada');
+        self::assertNull($this->tableroCon(true, 's1', null), 'sin almacén, nada');
+    }
+
+    /**
+     * Y EL TABLERO TRAE EL PLAN DE VERDAD, no un encabezado vacío.
+     *
+     * La perilla cableada y un tablero que siempre contesta `null` se ven idénticos desde el bucle.
+     * Ésta es la mitad que falta del control: que lo que llega tenga adentro las tarjetas.
+     */
+    public function testElTableroTraeLasTarjetasDeLaSesion(): void
+    {
+        $almacen = new \Milpa\Agent\SessionStore(new \Milpa\EventStore\InMemoryEventStore());
+        $almacen->start('s2', 'un objetivo', \Milpa\Agent\AutonomyMode::Auto);
+
+        $tablero = $this->tableroCon(true, 's2', $almacen);
+        self::assertNotNull($tablero);
+        self::assertNull($tablero->current(), 'sin plan ni tarjetas todavía, no hay qué reproyectar');
+
+        $almacen->setPlan('s2', 'primero A, luego B');
+        $almacen->setTodo('s2', new \Milpa\Agent\Todo('t1', 'hacer A', \Milpa\Agent\TodoStatus::InProgress));
+        $almacen->setTodo('s2', new \Milpa\Agent\Todo('t2', 'hacer B'));
+
+        $texto = $tablero->current();
+        self::assertNotNull($texto);
+        self::assertStringContainsString('primero A, luego B', $texto);
+        self::assertStringContainsString('hacer A', $texto);
+        self::assertStringContainsString('en curso', $texto, 'el estado en palabras, no en símbolos');
+        self::assertStringContainsString('pendiente', $texto);
+
+        // LEE CADA VEZ. Si memorizara, reproduciría el defecto que arregla un nivel más abajo.
+        $almacen->setTodo('s2', new \Milpa\Agent\Todo('t1', 'hacer A', \Milpa\Agent\TodoStatus::Done));
+        self::assertStringContainsString('hecho', (string) $tablero->current(), 'volvió a leer el stream');
+    }
+
+    private function tableroCon(bool $encendida, string $sesion, ?\Milpa\Agent\SessionStore $almacen): ?\Milpa\AiGateway\PlanBoard
+    {
+        $contenedor = new \Milpa\Container\DIContainer();
+        $contenedor->registerService(
+            \Milpa\Runtime\Config::class,
+            new \Milpa\Runtime\Config(['agent' => ['reprojectPlan' => $encendida]]),
+        );
+
+        $agente = new class ($contenedor) extends AgentOperations {
+            public function tablero(string $sesion, ?\Milpa\Agent\SessionStore $almacen): ?\Milpa\AiGateway\PlanBoard
+            {
+                return $this->tableroDePlan($sesion, $almacen);
+            }
+        };
+
+        return $agente->tablero($sesion, $almacen);
+    }
+
+    /**
+     * EL CÓDIGO SE DEFIENDE DE SU PROPIO MANIFIESTO — la guarda que evita un fatal por vendor viejo.
+     *
+     * `PlanBoard` llegó en `milpa/ai-gateway` 0.8, y este archivo viaja con `composer create-project`:
+     * convive con el vendor que su dueño tenga, no con el que su manifiesto pide. El
+     * `conflict: <0.8` declara la exigencia y **no la garantiza**, porque nadie obliga a correr
+     * `composer update`.
+     *
+     * Con la interfaz ausente, instanciar `SessionPlanBoard implements PlanBoard` sería un fatal. Esta
+     * prueba fija que la guarda es `interface_exists` y no una comprobación que el análisis estático
+     * pueda dar por cierta — no puede simular la ausencia de la interfaz (aquí siempre está), así que
+     * verifica la única propiedad observable: que la guarda EXISTE en el camino.
+     *
+     * Ya pasó una vez, con `Operation::$namedTarget` en un clon real.
+     */
+    public function testElTableroSeDefiendeDeUnVendorSinLaInterfaz(): void
+    {
+        $fuente = file_get_contents(\dirname(__DIR__, 2) . '/src/Operations/AgentOperations.php');
+        self::assertIsString($fuente);
+
+        self::assertStringContainsString(
+            'interface_exists(PlanBoard::class)',
+            $fuente,
+            'sin esta guarda, un ai-gateway anterior a 0.8 da fatal al instanciar el adaptador',
+        );
+
+        // Y EL PARÁMETRO NOMBRADO NO SE PASA CUANDO NO HAY TABLERO. Contra un 0.7, `planBoard: null`
+        // truena con «Unknown named parameter» en CADA vuelta — no cuando hay plan, siempre.
+        self::assertStringNotContainsString(
+            'planBoard: $tablero',
+            $fuente,
+            'el parámetro nombrado sólo puede viajar cuando la versión que lo acepta está instalada',
+        );
     }
 }

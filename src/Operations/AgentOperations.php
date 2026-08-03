@@ -15,6 +15,8 @@ declare(strict_types=1);
 namespace App\Operations;
 
 use Milpa\AiGateway\AgentOrchestrator;
+use Milpa\AiGateway\PlanBoard;
+use Milpa\AiGateway\RunInterrupted;
 use App\Agent\ArchitectureSummaryProjector;
 use Milpa\Attributes\PluginMetadata;
 use Milpa\Plugin\Runtime\MetadataGraphResolver;
@@ -25,6 +27,8 @@ use Milpa\AiGateway\OptionTable;
 use Milpa\AiGateway\SecondOpinionGate;
 use App\Agent\RecordOnlyOptionTable;
 use App\Agent\SessionOptionTable;
+use App\Agent\SessionPlanBoard;
+use App\Agent\StepWatcher;
 use Milpa\AiGateway\ToolCallGate;
 use Milpa\AiGateway\ToolCallRecorder;
 use Milpa\Agent\AutonomyMode;
@@ -132,7 +136,7 @@ class AgentOperations implements CommandProvider
      *
      * @param array<string, mixed> $input
      *
-     * @return array{ok: bool, answer?: string, steps?: int, tools?: int, error?: string, hint?: string}
+     * @return array{ok: bool, answer?: string, steps?: int, tools?: int, error?: string, hint?: string, paused?: bool, exhausted?: bool, interrupted?: bool}
      */
     private function run(array $input): array
     {
@@ -322,10 +326,33 @@ class AgentOperations implements CommandProvider
         }
 
         $vistos = 0;
+        // EL VIGÍA MIRA EL TECLADO ENTRE PASOS, si la app registró uno. Sin él esto corre igual que
+        // antes: una app sin terminal no tiene a quién preguntarle si quiere parar.
+        $vigia = $this->container->has(StepWatcher::class) ? $this->container->get(StepWatcher::class) : null;
+        $vigia = $vigia instanceof StepWatcher ? $vigia : null;
+
         try {
-            $respuesta = $this->ask($prompt, $pasos, $registry, $proveedor, $llave, $modelo, function () use (&$vistos): void {
+            $respuesta = $this->ask($prompt, $pasos, $registry, $proveedor, $llave, $modelo, function () use (&$vistos, $vigia): void {
                 ++$vistos;
-            }, $historial, $compuerta, $mesa, $grabadora);
+                $vigia?->paso($vistos);
+            }, $historial, $compuerta, $mesa, $grabadora, $this->tableroDePlan($sesionId, $almacen));
+        } catch (RunInterrupted $e) {
+            // INTERRUMPIR NO ES FALLAR. El trabajo hecho hasta aquí ya está en el stream —cada llamada
+            // se apenda al ocurrir— así que la sesión sigue viva y retomable. Decirlo como error
+            // sugeriría que hay algo que arreglar, y lo que hay es una decisión del humano.
+            if ($sesionId !== '' && $almacen !== null) {
+                $almacen->recordTurn($sesionId, 'assistant', 'La vuelta se interrumpió.');
+            }
+
+            return [
+                'ok' => true,
+                'answer' => 'La vuelta se interrumpió.',
+                'interrupted' => true,
+                'steps' => $vistos,
+                'tools' => \count($registry->getToolDefinitions()),
+                'session' => $sesionId !== '' ? $sesionId : null,
+                'hint' => 'dile qué cambió y pídele que siga',
+            ];
         } catch (\Throwable $e) {
             // El motivo se devuelve tal cual: viene del proveedor —una llave inválida, un modelo que
             // no existe, la red— y quien lo lee necesita esa frase, no una reformulación.
@@ -345,6 +372,29 @@ class AgentOperations implements CommandProvider
 
         if ($sesionId !== '') {
             $resultado['session'] = $sesionId;
+        }
+
+        // QUE LA VUELTA HAYA TERMINADO PAUSADA SE DICE, no se infiere.
+        //
+        // El texto de la pausa ES la pregunta, así que una superficie que además pinta el widget de la
+        // pregunta la mostraba DOS VECES — una con la voz del agente y otra como pregunta. Y una
+        // superficie no debería tener que adivinar por el contenido de una cadena en qué estado quedó
+        // la sesión.
+        //
+        // El `hint` es de la CLI: dice cómo contestar donde no hay dónde teclear la respuesta. El TUI
+        // lo ignora porque ahí sí lo hay. Antes esa línea viajaba dentro del texto y salía en las dos.
+        $pausada = $sesionId !== '' && $almacen !== null ? $almacen->load($sesionId) : null;
+        if ($pausada?->question !== null) {
+            $resultado['paused'] = true;
+            $resultado['hint'] = 'contesta con: coa agent:answer --session=' . $sesionId
+                . ' --answer=<' . implode('|', $pausada->question->options ?: ['tu respuesta']) . '>';
+        }
+
+        // AGOTAR EL TECHO NO ES CONTESTAR. Se nombra para que la superficie no lo pinte como respuesta.
+        if ($respuesta === AgentOrchestrator::STEPS_EXHAUSTED) {
+            $resultado['exhausted'] = true;
+            $resultado['answer'] = 'La vuelta se quedó sin pasos antes de terminar.';
+            $resultado['hint'] = 'pídele que siga, o dale más pasos con `--steps`';
         }
 
         // Que se haya compactado se DICE. Es lo único de esta operación que cambia en silencio lo que
@@ -390,20 +440,31 @@ class AgentOperations implements CommandProvider
         ?ToolCallGate $gate = null,
         ?OptionTable $mesa = null,
         ?ToolCallRecorder $recorder = null,
+        ?PlanBoard $tablero = null,
     ): string {
-        $orquestador = new AgentOrchestrator(
-            new LlmService(
-                $llave,
-                $modelo,
-                $proveedor,
-                new NullLogger(),
-                baseUrl: $this->baseUrl(),
-                extraHeaders: $this->extraHeaders(),
-            ),
-            new McpClientService($registry, $gate, $recorder ?? ($gate instanceof ToolCallRecorder ? $gate : null), $mesa),
-            $pasos,
+        $modeloRemoto = new LlmService(
+            $llave,
+            $modelo,
+            $proveedor,
             new NullLogger(),
+            baseUrl: $this->baseUrl(),
+            extraHeaders: $this->extraHeaders(),
         );
+        $cliente = new McpClientService($registry, $gate, $recorder ?? ($gate instanceof ToolCallRecorder ? $gate : null), $mesa);
+
+        // EL PARÁMETRO SÓLO SE PASA CUANDO HAY TABLERO, y no es estilo: es defensa.
+        //
+        // `planBoard` llegó en `milpa/ai-gateway` 0.8. Este archivo viaja con `composer
+        // create-project` y **convive con el vendor que su dueño tenga**, no con el que su manifiesto
+        // pide; contra un 0.7 instalado, `planBoard: null` truena con «Unknown named parameter» en
+        // CADA vuelta del agente — no cuando hay plan, siempre.
+        //
+        // El `conflict: milpa/ai-gateway <0.8` declara la exigencia; no la garantiza, porque nadie
+        // obliga a correr `composer update`. Ya pasó una vez con `Operation::$namedTarget`, y el modo
+        // de falla es el peor: un desajuste de versiones que se ve como un sistema roto.
+        $orquestador = $tablero === null
+            ? new AgentOrchestrator($modeloRemoto, $cliente, $pasos, new NullLogger())
+            : new AgentOrchestrator($modeloRemoto, $cliente, $pasos, new NullLogger(), null, $tablero);
 
         return $orquestador->run(
             $prompt,
@@ -491,6 +552,61 @@ class AgentOperations implements CommandProvider
             // sin plazo. Adivinar aquí sería matar sesiones por un typo en un archivo de config.
             return null;
         }
+    }
+
+    /**
+     * El plan de esta sesión, para que el bucle se lo vuelva a poner enfrente al agente en cada paso.
+     *
+     * `agent.reprojectPlan` en `config/app.php`. Detrás de una perilla por la misma razón que
+     * `agent.removeRefusedOptions`: es la intervención que
+     * Q-P20-B mide, y un experimento sin el brazo que
+     * NO la tiene no se puede comparar contra nada.
+     *
+     * Apagada por default mientras la pregunta esté abierta: lo que se despacha es lo ya medido, no lo
+     * que se está midiendo.
+     *
+     * `protected` por lo mismo que {@see ask()}: para que una prueba pueda mirar la decisión sin montar
+     * un kernel entero. El control positivo de esta perilla es lo único que hace legible la tanda.
+     *
+     * Sin sesión devuelve `null` y no un tablero vacío — no hay plan que reproyectar cuando no hay
+     * dónde guardarlo, y un encabezado sin tarjetas ocuparía contexto para decir nada.
+     */
+    protected function tableroDePlan(string $sesionId, ?SessionStore $almacen): ?PlanBoard
+    {
+        if ($sesionId === '' || $almacen === null) {
+            return null;
+        }
+
+        $config = $this->container->has(Config::class) ? $this->container->get(Config::class) : null;
+        if (($config instanceof Config ? $config->get('agent.reprojectPlan') : null) !== true) {
+            return null;
+        }
+
+        // SIN LA INTERFAZ NO SE INSTANCIA EL ADAPTADOR. `SessionPlanBoard implements PlanBoard`, así
+        // que contra un `milpa/ai-gateway` anterior a 0.8 cargarlo sería un fatal por interfaz
+        // ausente. Misma razón que la guarda de arriba: el manifiesto pide, el vendor instalado manda.
+        if (!interface_exists(PlanBoard::class)) {
+            return null;
+        }
+
+        return new SessionPlanBoard($almacen, $sesionId);
+    }
+
+    /**
+     * Si el prompt le pide al agente que escriba y mueva su plan.
+     *
+     * `agent.planInstruction`, y **encendida por default** — al revés que las otras perillas, porque
+     * ésta no enciende una intervención nueva: apaga la que **ya se despacha**. El brazo A de Q-P20-B
+     * es el único que la pone en `false`, para medir el piso sin palabras.
+     *
+     * Que exista esta perilla es lo que destapó la enmienda 4 de esa pregunta: el «control» del diseño
+     * anterior ya traía la instrucción puesta, así que habría sido el mismo brazo dos veces.
+     */
+    private function instruccionDePlan(): bool
+    {
+        $config = $this->container->has(Config::class) ? $this->container->get(Config::class) : null;
+
+        return ($config instanceof Config ? $config->get('agent.planInstruction') : null) !== false;
     }
 
     /**
@@ -812,14 +928,24 @@ class AgentOperations implements CommandProvider
             . "- Doctrine es de la convención legacy, no de ésta. Las entidades que `make` escribe implementan\n"
             . '  `Milpa\\Data\\EntityInterface`: sin atributos de ORM, sin mapeo.',
 
-            // Sin esto, las herramientas existen y no se usan. Un modelo que puede anotar su plan y no
-            // sabe que le conviene, no lo anota — y el plan es lo único que sobrevive a una
-            // compactación para decirle qué sigue.
-            "Cuando el trabajo lleve más de dos o tres pasos:\n"
-            . "- Escribe un plan con `plan` ANTES de empezar, y agrega un pendiente con `todo` por cada parte.\n"
-            . "- Marca `todo` con status `done` EN CUANTO termines cada una, no al final.\n"
-            . '- Si una sesión ya trae plan y pendientes, sigue ésos en vez de escribir otros: son tuyos, de antes.',
         ];
+
+        // LA INSTRUCCIÓN DEL PLAN, QUE AHORA SE PUEDE APAGAR.
+        //
+        // Sin esto, las herramientas existen y no se usan. Un modelo que puede anotar su plan y no sabe
+        // que le conviene, no lo anota — y el plan es lo único que sobrevive a una compactación para
+        // decirle qué sigue.
+        //
+        // Va detrás de `agent.planInstruction` porque el brazo A de Q-P20-B mide el piso sin ella. Y
+        // hay una ironía que vale la pena dejar escrita donde vive: el tercer renglón le pide seguir un
+        // plan que **el bucle nunca le enseña** — `AgentOrchestrator` no conocía `Todo` hasta que
+        // apareció {@see \Milpa\AiGateway\PlanBoard}. Ésa es la pregunta entera en una frase.
+        if ($this->instruccionDePlan()) {
+            $partes[] = "Cuando el trabajo lleve más de dos o tres pasos:\n"
+                . "- Escribe un plan con `plan` ANTES de empezar, y agrega un pendiente con `todo` por cada parte.\n"
+                . "- Marca `todo` con status `done` EN CUANTO termines cada una, no al final.\n"
+                . '- Si una sesión ya trae plan y pendientes, sigue ésos en vez de escribir otros: son tuyos, de antes.';
+        }
 
         // LO QUE ESTA APP TRAE PUESTO, dicho por los paquetes mismos.
         //
