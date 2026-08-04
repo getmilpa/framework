@@ -398,4 +398,49 @@ final class SubAgentSpawnerTest extends TestCase
         self::assertFalse($reporte['ok']);
         self::assertSame([], $almacen->ids() === [] ? [] : array_filter($almacen->ids(), static fn (string $id): bool => str_starts_with($id, 'padre.sub-')), 'y no nació ninguna sesión hija');
     }
+
+    /**
+     * EL FONDO DEL ÁRBOL SE GASTA ENTRE HERMANOS, y la negativa llega antes de abrir la sesión.
+     *
+     * La profundidad ya era 1 por construcción; la anchura no estaba acotada por nada. Con fondo de
+     * 10 y dos hijos que gastan 4 cada uno, el tercero no procede — y no deja stream huérfano que
+     * alguien tenga que explicar mañana.
+     */
+    public function testTheTreesFundIsSpentBetweenSiblingsAndTheThirdOneIsRefused(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('padre', 'la tarea grande');
+
+        $fondo = new \App\Agent\TreeBudget(10);
+        $spawner = new SubAgentSpawner(
+            $almacen,
+            'padre',
+            fn (): array => ['answer' => 'listo', 'steps' => 4],
+            $fondo,
+        );
+
+        self::assertTrue($spawner->spawn(['brief' => 'uno'])['ok']);
+        self::assertTrue($spawner->spawn(['brief' => 'dos'])['ok']);
+
+        $sesionesAntes = \count($almacen->ids());
+        $tercero = $spawner->spawn(['brief' => 'tres']);
+
+        self::assertFalse($tercero['ok'] ?? true, 'el tercero no procede');
+        self::assertStringContainsString('2 paso', (string) $tercero['error'], 'y dice cuánto queda');
+        self::assertArrayNotHasKey('sub_session', $tercero, 'sin sesión abierta y negada');
+        self::assertCount($sesionesAntes, $almacen->ids(), 'no dejó stream huérfano');
+    }
+
+    /** Sin fondo declarado corre como siempre: esto no cambia el comportamiento de quien no lo pidió. */
+    public function testWithoutAFundNothingChanges(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('padre', 'x');
+
+        $spawner = new SubAgentSpawner($almacen, 'padre', fn (): array => ['answer' => 'listo', 'steps' => 99]);
+
+        for ($i = 0; $i < 4; ++$i) {
+            self::assertTrue($spawner->spawn(['brief' => "encargo {$i}"])['ok']);
+        }
+    }
 }

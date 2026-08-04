@@ -31,6 +31,7 @@ use App\Agent\SessionPlanBoard;
 use App\Agent\StepWatcher;
 use App\Agent\SterileLoopGuard;
 use App\Agent\SubAgentSpawner;
+use App\Agent\TreeBudget;
 use Milpa\AiGateway\ToolCallGate;
 use Milpa\AiGateway\ToolCallRecorder;
 use Milpa\Agent\AutonomyMode;
@@ -267,10 +268,11 @@ class AgentOperations implements CommandProvider
                 // en cada llamada—, mismo almacén. El catálogo del hijo sale de su propia
                 // contabilidad SIN spawn: profundidad 1 por construcción, y el presupuesto del árbol
                 // (§5.4) queda diferido con esa misma decisión a la vista.
+                $presupuestoDelArbol = $this->presupuestoDelArbol($pasos);
                 $spawner = new SubAgentSpawner(
                     $almacen,
                     $sesionId,
-                    function (string $encargo, string $hijoId, array $historialHijo, array $primeroHijo = []) use ($almacen, $kernel, $pasos, $proveedor, $llave, $modelo): array {
+                    function (string $encargo, string $hijoId, array $historialHijo, array $primeroHijo = []) use ($almacen, $kernel, $pasos, $proveedor, $llave, $modelo, $presupuestoDelArbol): array {
                         $hijo = $almacen->load($hijoId);
                         if ($hijo === null) {
                             return ['answer' => 'la sesión hija no se pudo abrir', 'steps' => 0];
@@ -308,9 +310,12 @@ class AgentOperations implements CommandProvider
                         // EL HISTORIAL LO DECIDE EL SPAWNER, no este cableado: vacío al spawnear
                         // (§5.1, el contexto fresco es la razón de ser) y la ventana del hijo al
                         // retomar (Q-P19-Q, retomar no es re-spawnear).
+                        // EL TECHO DEL HIJO SALE DEL FONDO: el suyo, o lo que quede si es menos. La
+                        // negativa por fondo agotado ya la dio el spawner antes de llegar aquí, así
+                        // que esto sólo recorta al último hijo que todavía alcanza a trabajar.
                         $respuestaHijo = $this->ask(
                             $encargo,
-                            $pasos,
+                            $presupuestoDelArbol?->techoParaElSiguiente($pasos) ?? $pasos,
                             $registroHijo,
                             $proveedor,
                             $llave,
@@ -331,6 +336,7 @@ class AgentOperations implements CommandProvider
 
                         return ['answer' => $respuestaHijo, 'steps' => $vistosHijo];
                     },
+                    $presupuestoDelArbol,
                 );
                 $contabilidad[] = $spawner->operation();
                 $contabilidad[] = $spawner->resumeOperation();
@@ -686,6 +692,27 @@ class AgentOperations implements CommandProvider
      * abierta, por la misma razón que las demás perillas de esta familia: lo que se despacha es lo
      * ya medido, no lo que se está midiendo. Un entero fija la tolerancia; `true` usa la de casa.
      */
+    /**
+     * El fondo de pasos que el árbol comparte en esta vuelta (§5.4), o `null` para correr sin techo.
+     *
+     * El default es TRES VECES el techo del padre y no una constante suelta: el número que importa es
+     * cuánto puede gastar delegando comparado con lo que gasta él, y esa proporción se lee. Un `12`
+     * escrito aquí no diría nada el día que alguien corra con techo de 40.
+     */
+    private function presupuestoDelArbol(int $pasos): ?TreeBudget
+    {
+        $config = $this->container->has(Config::class) ? $this->container->get(Config::class) : null;
+        $valor = $config instanceof Config ? $config->get('agent.treeBudget') : null;
+
+        if (\is_int($valor)) {
+            // Un cero o un negativo declarado NO es «sin techo»: es «no delegues», y se respeta. Caer
+            // a ilimitado ante un número raro convertiría un error de config en un gasto abierto.
+            return new TreeBudget(max(0, $valor));
+        }
+
+        return $valor === false ? null : new TreeBudget($pasos * 3);
+    }
+
     private function vigiaDeBucle(): ?SterileLoopGuard
     {
         $config = $this->container->has(Config::class) ? $this->container->get(Config::class) : null;

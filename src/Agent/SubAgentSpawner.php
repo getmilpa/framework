@@ -56,6 +56,10 @@ final class SubAgentSpawner
         private readonly SessionStore $sessions,
         private readonly string $parentId,
         private readonly \Closure $runChild,
+        // EL FONDO DEL ÁRBOL (§5.4), o `null` para correr sin techo como antes. Vive aquí y no en el
+        // cierre porque es de la DELEGACIÓN: quien decide si se puede delegar es quien delega, y la
+        // negativa tiene que llegar antes de gastar la vuelta del modelo.
+        private readonly ?TreeBudget $presupuesto = null,
     ) {
     }
 
@@ -234,6 +238,13 @@ final class SubAgentSpawner
             }
         }
 
+        // ANTES DE ABRIR LA SESIÓN, no después: un hijo creado y negado deja un stream huérfano que
+        // luego alguien tiene que explicar, y no explica nada.
+        $sinFondo = $this->presupuesto?->motivoParaNoDelegar();
+        if ($sinFondo !== null) {
+            return ['ok' => false, 'error' => $sinFondo];
+        }
+
         $hijoId = $this->parentId . '.sub-' . substr(bin2hex(random_bytes(4)), 0, 6);
         $this->sessions->start($hijoId, $brief, AutonomyMode::Auto, parentId: $this->parentId);
 
@@ -370,6 +381,11 @@ final class SubAgentSpawner
 
         $respuesta = $corrida['answer'];
         $this->sessions->recordTurn($hijoId, 'assistant', $respuesta);
+
+        // SE DESCUENTA LO QUE GASTÓ, no lo que se le autorizó: un hijo que terminó en dos pasos deja
+        // los otros diez para sus hermanos. Reservar por adelantado acotaría el árbol al número de
+        // delegaciones y no a su costo, que es lo que importa.
+        $this->presupuesto?->anota($corrida['steps']);
 
         $reporte = [
             'ok' => true,
