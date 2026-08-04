@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/getmilpa/framework/compare/v0.18.0...v0.19.0) (2026-08-04)
+
+
+### Features
+
+* **agent:** agent:discard — cerrar una sesión que quedó esperando a nadie ([09e0666](https://github.com/getmilpa/framework/commit/09e066602bd331606fe7b94b71998b3eef53eb84))
+
 ## [0.18.0](https://github.com/getmilpa/framework/compare/v0.17.2...v0.18.0) (2026-08-04)
 
 
