@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/getmilpa/framework/compare/v0.17.1...v0.17.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* **deps:** admite milpa/plugin ^0.9 ([451d790](https://github.com/getmilpa/framework/commit/451d7908aeb66160d261c43e41c8dd8e7c2d2df0))
+
 ## [0.17.1](https://github.com/getmilpa/framework/compare/v0.17.0...v0.17.1) (2026-08-04)
 
 
