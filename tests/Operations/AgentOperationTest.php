@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Operations;
 
-use App\Operations\AgentOperations;
+use Milpa\AppRuntime\Operations\AgentOperations;
 use Milpa\Command\Operation;
 use Milpa\Container\DIContainer;
 use Milpa\Agent\AutonomyMode;
@@ -917,7 +917,17 @@ final class AgentOperationTest extends TestCase
      */
     public function testElTableroSeDefiendeDeUnVendorSinLaInterfaz(): void
     {
-        $fuente = file_get_contents(\dirname(__DIR__, 2) . '/src/Operations/AgentOperations.php');
+        // SE LE PREGUNTA A LA CLASE DÓNDE VIVE, no se arma su ruta a mano.
+        //
+        // `dirname(__DIR__, 3) . '/milpa-app-runtime/src/...'` era cierto mientras el código vivía
+        // al lado, en el monorepo. Desde que se mudó a `milpa/app-runtime` esa ruta sólo existe
+        // AQUÍ: en el árbol exportado el archivo está en `vendor/`, y la prueba fallaba con
+        // «false is of type string» — un `file_get_contents` de algo que no está, no un defecto del
+        // código que dice medir. Es la tercera vez en esta mudanza que una ruta cableada sobrevive
+        // al lugar para el que se escribió.
+        $archivo = (new \ReflectionClass(AgentOperations::class))->getFileName();
+        self::assertIsString($archivo);
+        $fuente = file_get_contents($archivo);
         self::assertIsString($fuente);
 
         self::assertStringContainsString(

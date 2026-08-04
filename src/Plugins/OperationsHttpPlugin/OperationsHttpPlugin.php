@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 namespace App\Plugins\OperationsHttpPlugin;
 
-use App\Support\Operations;
+use Milpa\AppRuntime\Support\Operations;
 use Milpa\Attributes\PluginMetadata;
 use Milpa\Command\Operation;
 use Milpa\Console\Http\HttpProjector;

@@ -14,8 +14,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Support;
 
-use App\Operations\AgentOperations;
-use App\Support\Operations;
+use Milpa\AppRuntime\Operations\AgentOperations;
+use Milpa\AppRuntime\Support\Operations;
 use Milpa\Container\DIContainer;
 use Milpa\Runtime\Kernel;
 use Milpa\ToolRuntime\ToolRegistry;
@@ -162,7 +162,7 @@ final class OperationsTest extends TestCase
         mkdir($raiz . '/config', 0o775, true);
         file_put_contents(
             $raiz . '/config/operations.php',
-            "<?php\n\nreturn ['Milpa\\\\NoExiste\\\\Operaciones', 'App\\\\Operations\\\\CapabilityOperations'];\n",
+            "<?php\n\nreturn ['Milpa\\\\NoExiste\\\\Operaciones', 'Milpa\\\\AppRuntime\\\\Operations\\\\CapabilityOperations'];\n",
         );
 
         try {

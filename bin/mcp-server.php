@@ -77,7 +77,7 @@ if (!$registry instanceof ToolRegistry) {
 // fuera lo de `config/operations.php`, así que un cliente MCP veía menos herramientas que `coa`.
 // Una superficie que ofrece menos que otra sobre la misma app es un inventario mintiendo.
 (new \Milpa\Console\McpProjector())->projectAll(
-    \App\Support\Operations::all($kernel, $root),
+    \Milpa\AppRuntime\Support\Operations::all($kernel, $root),
     $registry,
     $kernel->container(),
 );

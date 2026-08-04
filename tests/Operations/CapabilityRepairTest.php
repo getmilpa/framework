@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Operations;
 
-use App\Operations\CapabilityOperations;
+use Milpa\AppRuntime\Operations\CapabilityOperations;
 use Milpa\Command\Operation;
 use PHPUnit\Framework\TestCase;
 

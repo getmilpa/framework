@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Operations;
 
-use App\Operations\AgentOperations;
+use Milpa\AppRuntime\Operations\AgentOperations;
 use Milpa\AiGateway\LlmService;
 use Milpa\Container\DIContainer;
 use Milpa\Runtime\Config;

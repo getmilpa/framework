@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-use App\Console\Application;
+use Milpa\AppRuntime\Console\Application;
 
 require __DIR__ . '/../vendor/autoload.php';
 

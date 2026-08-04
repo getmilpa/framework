@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Console;
 
-use App\Console\Application;
+use Milpa\AppRuntime\Console\Application;
 use PHPUnit\Framework\TestCase;
 
 /**

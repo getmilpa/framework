@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use App\Auth\ApiToken;
-use App\Auth\TokenVerifier;
+use Milpa\AppRuntime\Auth\ApiToken;
+use Milpa\AppRuntime\Auth\TokenVerifier;
 use Milpa\Auth\Contracts\CredentialVerifier;
 use Milpa\Auth\Http\AuthOperationHttpPolicy;
 use Milpa\Command\OperationHttpPolicy;
