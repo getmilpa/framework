@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/getmilpa/framework/compare/v0.17.0...v0.17.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **agent:** el sub-agente escribe su plan en su propia sesión ([cffba04](https://github.com/getmilpa/framework/commit/cffba040f9deabf767f72713a6304e343d79dca0))
+
 ## [0.17.0](https://github.com/getmilpa/framework/compare/v0.16.0...v0.17.0) (2026-08-04)
 
 
