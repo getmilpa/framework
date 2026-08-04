@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.21.0](https://github.com/getmilpa/framework/compare/v0.20.0...v0.21.0) (2026-08-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* el pin sube a milpa/app-runtime ^0.4 — tiny vuelve a ser tiny
+* el runtime del agente llega por versión, no copiado
+
+### Features
+
+* el runtime del agente llega por versión, no copiado ([47de263](https://github.com/getmilpa/framework/commit/47de263785f81f33a3b2c76cf0b45616b1468d3c))
+
+
+### Bug Fixes
+
+* el pin sube a milpa/app-runtime ^0.4 — tiny vuelve a ser tiny ([b845989](https://github.com/getmilpa/framework/commit/b8459891b4417d0de01fba6e8c88300477877cc1))
+
 ## [0.20.0](https://github.com/getmilpa/framework/compare/v0.19.0...v0.20.0) (2026-08-04)
 
 
