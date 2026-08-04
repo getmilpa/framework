@@ -49,16 +49,12 @@ jobs:
 
       # LA CARA TINY, primero y sin nada encima: esto es lo que recibe quien crea una app. Si arranca
       # y no anuncia lo que no puede hacer, el corte es real; si no, el README miente (ADR-0040).
+      # Vive en `tools/boot-proof.sh` y no aquí adentro para que pueda correr en DOS lugares desde una
+      # sola fuente: esta CI, y la ceremonia de release en el árbol exportado ANTES de empujar.
+      # Inlineado sólo corría río abajo, y el 2026-08-04 cazó una regresión un minuto tarde: ya
+      # estaba publicada.
       - name: Tiny by default — boots, and offers only what it can do
-        run: |
-          php bin/coa list > /tmp/tiny.txt
-          grep -q 'capabilities' /tmp/tiny.txt || { echo "el catalogo no se ofrece"; exit 1; }
-          for op in 'agent:sessions' 'token:list' 'coa chat'; do
-            grep -q "$op" /tmp/tiny.txt && { echo "ofrece $op sin su paquete"; exit 1; }
-          done
-          php bin/coa capabilities | grep -q 'composer require milpa/agent' \
-            || { echo "no ensena el camino"; exit 1; }
-          echo "tiny ok: arranca, no promete lo que no puede, y dice como crecer"
+        run: tools/boot-proof.sh
 
       # Y LA CARA COMPLETA. Los opt-in se instalan AQUI y no en require-dev: `create-project` instala
       # los dev, asi que ponerlos ahi haria que toda app naciera con los seis puestos — el corte seria
