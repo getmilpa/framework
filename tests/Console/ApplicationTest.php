@@ -277,16 +277,40 @@ final class ApplicationTest extends TestCase
      * Cambiar de sesión no es una pregunta: es cambiar el sujeto de la conversación. Mandarlo al
      * agente gastaría una llamada al proveedor para que conteste sobre algo que el sistema ya sabe, y
      * lo contestaría interpretando en vez de haciendo.
+     *
+     * LA SESIÓN LA CREA ESTA PRUEBA. Antes sólo afirmaba que la respuesta era una cadena, así que
+     * pasaba con el almacén vacío —enumerando la nada— y con el almacén lleno, midiendo cosas
+     * distintas sin decirlo. En mi máquina cubría trece líneas que en CI no, porque mi `var/` traía
+     * las sesiones del día: 90.34% aquí, 89.83% allá, sobre EL MISMO código y las mismas pruebas. Una
+     * cobertura que depende de lo que quedó en el disco no está midiendo la suite.
      */
     public function testSlashSessionsListsAndSwitchesWithoutAskingTheModel(): void
     {
         $app = new Application(\dirname(__DIR__, 2));
         $metodo = new \ReflectionMethod($app, 'preguntarAlAgente');
 
-        $listado = $metodo->invoke($app, '/sessions');
+        $almacen = (new \ReflectionMethod($app, 'almacenDeSesiones'))->invoke($app);
+        if (!$almacen instanceof \Milpa\Agent\SessionStore) {
+            self::markTestSkipped('esta app no guarda sesiones');
+        }
 
-        self::assertTrue($listado['ok']);
-        self::assertIsString($listado['answer'] ?? null);
+        $j = 'jornada-' . bin2hex(random_bytes(3));
+        $almacen->start($j, 'la tarea de esta prueba');
+        (new \ReflectionProperty($app, 'sesionDelChatId'))->setValue($app, $j);
+
+        $listado = (string) $metodo->invoke($app, '/sessions')['answer'];
+
+        self::assertStringContainsString($j, $listado, 'la sesión que existe aparece enumerada');
+        self::assertStringContainsString('pendiente(s)', $listado);
+        self::assertStringContainsString('← estás aquí', $listado, 'y dice en cuál estás parado');
+
+        // Cambiarse a una que SÍ existe deja al chat parado ahí — el camino que la enumeración
+        // habilita, y el que sólo se probaba por su negativa.
+        $otra = 'jornada-' . bin2hex(random_bytes(3));
+        $almacen->start($otra, 'otra cosa');
+
+        self::assertTrue($metodo->invoke($app, '/sessions ' . $otra)['ok']);
+        self::assertSame($otra, (new \ReflectionProperty($app, 'sesionDelChatId'))->getValue($app));
 
         $inexistente = $metodo->invoke($app, '/sessions no-existe-esta');
 
