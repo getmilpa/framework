@@ -260,6 +260,16 @@ src/Tui                   the agent conversation screen
 `config/plugins.php` is a list, not a scan. What runs in this app is a versioned decision — a plugin
 that installs itself from the network is an attack surface, not a convenience.
 
+## Coming from an app you created before 0.21
+
+Your app is not broken — it boots exactly as it did and every command still works. It is *frozen*:
+26 of the 29 files in its `src/` were copied in the day you created it, and copied code never
+receives an improvement again. From 0.21 those files ship as `milpa/app-runtime` instead.
+
+**[UPGRADING.md](UPGRADING.md)** walks the migration: how to find out whether you edited any of them
+first, then four steps and one check. Verified on a real 0.20.0 app — 29 operations before, the same
+29 after.
+
 ## Coming from `milpa/skeleton`
 
 `milpa/skeleton` was the previous `composer create-project` target and is now **abandoned** — this
