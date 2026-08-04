@@ -46,11 +46,11 @@ use Milpa\Command\Operation;
 final class SubAgentSpawner
 {
     /**
-     * @param \Closure(string, string, array<int, array{role: string, content: string}>): array{answer: string, steps: int} $runChild corre la vuelta del hijo: recibe el encargo, el id de la
-     *                                                                                                                                sesión hija y el historial que el hijo debe ver — vacío al
-     *                                                                                                                                spawnear (§5.1), SU ventana al retomar. El cableado —gate con
-     *                                                                                                                                techo, catálogo sin spawn ni resume— lo pone quien construye
-     *                                                                                                                                esto, porque es quien tiene el kernel y la credencial
+     * @param \Closure(string, string, array<int, array{role: string, content: string}>, list<string>): array{answer: string, steps: int} $runChild corre la vuelta del hijo: recibe el encargo, el id de la
+     *                                                                                                                                              sesión hija y el historial que el hijo debe ver — vacío al
+     *                                                                                                                                              spawnear (§5.1), SU ventana al retomar. El cableado —gate con
+     *                                                                                                                                              techo, catálogo sin spawn ni resume— lo pone quien construye
+     *                                                                                                                                              esto, porque es quien tiene el kernel y la credencial
      */
     public function __construct(
         private readonly SessionStore $sessions,
@@ -90,7 +90,9 @@ final class SubAgentSpawner
                         'items' => ['type' => 'string'],
                         'description' => 'Obligaciones que el sub-agente debe cumplir SIEMPRE, una por elemento '
                             . '(p. ej. «escribe un plan antes de empezar»). Van aparte del brief porque llegan '
-                            . 'garantizadas: el sistema las numera y las pone al final del encargo.',
+                            . 'garantizadas: el sistema las numera y las pone al final del encargo. Medido, una '
+                            . 'obligación de orden así se cumple 8/8. Para una PROHIBICIÓN prefiere `deny`, que la '
+                            . 'ejecuta; para una garantía dura de orden, `first`.',
                     ],
                     'deny' => [
                         'type' => 'array',
@@ -98,6 +100,14 @@ final class SubAgentSpawner
                         'description' => 'Herramientas que el sub-agente NO debe tener, por nombre (p. ej. '
                             . '«plugins_lock»). No es una petición: salen de su catálogo y no puede llamarlas. '
                             . 'Prefiere esto a pedirlo en `must` — lo pedido se cumple menos que lo que no existe.',
+                    ],
+                    'first' => [
+                        'type' => 'array',
+                        'items' => ['type' => 'string'],
+                        'description' => 'Herramientas que el sub-agente tiene que correr ANTES que cualquier otra, '
+                            . 'por nombre (p. ej. «plan»). No es una petición: hasta que corran, el resto de sus '
+                            . 'llamadas no proceden. Es la forma ejecutada de «haz X antes de empezar» — pedirlo en '
+                            . '`must` entrega la frase, esto cambia lo que puede hacer.',
                     ],
                     'role' => [
                         'type' => 'string',
@@ -212,6 +222,18 @@ final class SubAgentSpawner
             }
         }
 
+        // LA OBLIGACIÓN DE ORDEN, ejecutada (Q-P20-I). `must` entrega la frase —8/8 entregadas, 0/8
+        // obedecidas—; esto cierra la mesa: hasta que lo obligado corra, ninguna otra llamada procede.
+        // La hipótesis es que «planea antes de empezar» nunca fue una obligación irreducible sino una
+        // prohibición disfrazada —«no empieces sin plan»—, y que por eso admite la misma traducción
+        // que ya se cumplió 8/8.
+        $primero = [];
+        foreach (\is_array($input['first'] ?? null) ? $input['first'] : [] as $herramienta) {
+            if (\is_string($herramienta) && trim($herramienta) !== '') {
+                $primero[] = trim($herramienta);
+            }
+        }
+
         $hijoId = $this->parentId . '.sub-' . substr(bin2hex(random_bytes(4)), 0, 6);
         $this->sessions->start($hijoId, $brief, AutonomyMode::Auto, parentId: $this->parentId);
 
@@ -226,8 +248,22 @@ final class SubAgentSpawner
                 . implode(', ', $prohibidas) . '. No las busques.';
         }
 
+        if ($primero !== []) {
+            // SE LE DICE, por lo mismo que a `deny`: el hecho cambia el mundo y la frase le dice por
+            // qué. Un hijo que choca con una negativa sin haberla visto venir gasta la llamada que
+            // esta línea le ahorra.
+            //
+            // Y VA AL PRINCIPIO, NO AL FINAL. Apendada empujaba la última etapa del encargo lejos de
+            // la cola, y ahí se perdía: 4 de 8 corridas hicieron cuatro de las cinco etapas y la que
+            // faltó fue siempre la quinta. Es el mecanismo de posición que Q-P20-E ya había medido
+            // —8/8 dentro de la enumeración contra 1/8 colgando después—, y esta frase lo estaba
+            // provocando desde el otro lado: no se caía ella, tiraba a la de junto.
+            $encargo = 'Antes que cualquier otra cosa corre: ' . implode(', ', $primero)
+                . ". Hasta entonces tus demás llamadas no proceden.\n\n" . $encargo;
+        }
+
         // HISTORIAL VACÍO A PROPÓSITO (§5.1): el contexto fresco es la razón de ser del spawn.
-        return $this->correr($hijoId, $encargo, []);
+        return $this->correr($hijoId, $encargo, [], $primero);
     }
 
     /**
@@ -305,15 +341,18 @@ final class SubAgentSpawner
      * La vuelta del hijo y su reporte: una sola verdad para spawn y resume.
      *
      * @param array<int, array{role: string, content: string}> $historial
+     * @param list<string>                                     $primero   lo que el hijo tiene que
+     *                                                                    correr antes que cualquier
+     *                                                                    otra cosa
      *
      * @return array<string, mixed>
      */
-    private function correr(string $hijoId, string $encargo, array $historial): array
+    private function correr(string $hijoId, string $encargo, array $historial, array $primero = []): array
     {
         $this->sessions->recordTurn($hijoId, 'user', $encargo);
 
         try {
-            $corrida = ($this->runChild)($encargo, $hijoId, $historial);
+            $corrida = ($this->runChild)($encargo, $hijoId, $historial, $primero);
         } catch (RunInterrupted $e) {
             // La interrupción del humano NO se traga: para el árbol completo. Convertirla en un
             // reporte de fallo dejaría al padre seguir trabajando después de que el humano dijo alto.

@@ -44,6 +44,7 @@ use Milpa\Console\McpProjector;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Runtime\Config;
 use App\Agent\SessionBookkeeping;
+use App\Agent\PrerequisiteGate;
 use App\Agent\SessionToolGate;
 use App\Support\Operations;
 use Milpa\Interfaces\Tooling\ToolProviderInterface;
@@ -269,7 +270,7 @@ class AgentOperations implements CommandProvider
                 $spawner = new SubAgentSpawner(
                     $almacen,
                     $sesionId,
-                    function (string $encargo, string $hijoId, array $historialHijo) use ($almacen, $kernel, $pasos, $proveedor, $llave, $modelo): array {
+                    function (string $encargo, string $hijoId, array $historialHijo, array $primeroHijo = []) use ($almacen, $kernel, $pasos, $proveedor, $llave, $modelo): array {
                         $hijo = $almacen->load($hijoId);
                         if ($hijo === null) {
                             return ['answer' => 'la sesión hija no se pudo abrir', 'steps' => 0];
@@ -286,8 +287,18 @@ class AgentOperations implements CommandProvider
                             // El hijo tiene el SUYO, nuevo: el presupuesto que gasta repitiendo es
                             // el suyo, y los fallos del padre no son los de él.
                             vigiaDeBucle: $this->vigiaDeBucle(),
+                            // LA OBLIGACIÓN DE ORDEN, ejecutada (Q-P20-I). Va por el mismo canal que
+                            // corre al hijo y NO por el stream, así que sólo gobierna la vuelta que
+                            // spawnea: un hijo retomado llega con la mesa abierta. Es residuo
+                            // declarado, no descuido — persistirlo pide un evento nuevo en
+                            // `milpa/agent`, y la pregunta que esta rebanada contesta se mide en
+                            // spawn.
+                            compuertaPrevia: $primeroHijo === [] ? null : new PrerequisiteGate($primeroHijo),
                         );
-                        $registroHijo = $this->toolsOfThisApp((new SessionBookkeeping($almacen, $hijoId))->operations());
+                        $registroHijo = $this->toolsOfThisApp(
+                            (new SessionBookkeeping($almacen, $hijoId))->operations(),
+                            registroPropio: true,
+                        );
                         if ($registroHijo === null) {
                             return ['answer' => 'esta app no expuso ninguna operación como herramienta', 'steps' => 0];
                         }
@@ -1294,14 +1305,27 @@ class AgentOperations implements CommandProvider
      * @param list<Operation> $extra operaciones que sólo existen para esta corrida — hoy, las que
      *                               atan el plan y los pendientes a la sesión en curso
      */
-    private function toolsOfThisApp(array $extra = [], bool $soloLectura = false): ?ToolRegistry
+    private function toolsOfThisApp(array $extra = [], bool $soloLectura = false, bool $registroPropio = false): ?ToolRegistry
     {
         $kernel = $this->container->has(Kernel::class) ? $this->container->get(Kernel::class) : null;
         if (!$kernel instanceof Kernel) {
             return null;
         }
 
-        $registry = $kernel->toolRegistry();
+        // UN REGISTRO PROPIO PARA QUIEN TIENE OTRA SESIÓN — y no es una optimización, es corregir que
+        // el hijo escribía en el cuaderno del padre.
+        //
+        // El registro del kernel es UNO para el proceso, y unas líneas más abajo se descarta lo que ya
+        // esté registrado por NOMBRE. `plan` y `todo` no son herramientas cualesquiera: son cierres
+        // atados a una sesión concreta. El padre registraba las suyas primero, el `plan` del hijo se
+        // descartaba por duplicado, y el hijo terminaba llamando al del padre: su plan y sus
+        // pendientes aterrizaban en el stream del padre.
+        //
+        // Se descubrió el 2026-08-04 midiendo Q-P20-I, y su daño no fue el estado: fue la MEDICIÓN.
+        // «El hijo no planeó 0/8» era el `plan_set` archivado en el otro stream — el cierre de
+        // Q-P20-G se construyó sobre eso y quedó corregido. `SessionBookkeeping($almacen, $hijoId)`
+        // era un lector muerto: se construía con el id correcto y nadie lo llamaba.
+        $registry = $registroPropio ? new ToolRegistry(new NullLogger()) : $kernel->toolRegistry();
         if (!$registry instanceof ToolRegistry) {
             $registry = new ToolRegistry(new NullLogger());
         }

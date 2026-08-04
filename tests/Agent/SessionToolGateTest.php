@@ -408,4 +408,56 @@ final class SessionToolGateTest extends TestCase
             'el padre bajó a ask y la misma compuerta lo siente en la siguiente llamada',
         );
     }
+
+    /**
+     * LA OBLIGACIÓN DE ORDEN CIERRA LA MESA, y lo obligado sigue siendo llamable.
+     *
+     * El orden dentro de `refuse()` es lo que se fija aquí: la contabilidad se exime ANTES que esta
+     * compuerta, porque lo obligado casi siempre ES contabilidad —«planea antes de empezar»— y
+     * gatearla volvería la obligación imposible de cumplir. Una mesa que no puede abrirse nunca es
+     * peor que una abierta.
+     */
+    public function testAnOrderObligationHoldsBackTheRestAndNotItself(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('j', 'x', AutonomyMode::Auto);
+        $sesion = $almacen->load('j');
+        self::assertNotNull($sesion);
+
+        $compuerta = new SessionToolGate(
+            $almacen,
+            $sesion,
+            $this->operaciones(),
+            compuertaPrevia: new \App\Agent\PrerequisiteGate(['plan']),
+        );
+
+        self::assertIsString($compuerta->refuse('make', []), 'trabajar no procede sin plan');
+        self::assertNull($compuerta->refuse('plan', []), 'y planear sí, o no se podría cumplir');
+    }
+
+    /**
+     * Y la compuerta APRENDE de la contabilidad, aunque la contabilidad no se apunte como llamada.
+     *
+     * `recorded()` corta temprano para no cobrarle a la ventana dos veces el mismo hecho. Si la
+     * compuerta se enterara después de ese corte, no vería nunca que se cumplió: la mesa quedaría
+     * cerrada para siempre por el mismo `plan` que venía a abrirla.
+     */
+    public function testTheGateLearnsFromBookkeepingEvenThoughItIsNotCountedAsACall(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('j', 'x', AutonomyMode::Auto);
+        $sesion = $almacen->load('j');
+        self::assertNotNull($sesion);
+
+        $compuerta = new SessionToolGate(
+            $almacen,
+            $sesion,
+            $this->operaciones(),
+            compuertaPrevia: new \App\Agent\PrerequisiteGate(['plan']),
+        );
+
+        $compuerta->recorded('plan', ['plan' => 'primero esto'], '{"ok":true}', true);
+
+        self::assertNull($compuerta->refuse('make', []), 'con el plan escrito, la mesa abre');
+    }
 }

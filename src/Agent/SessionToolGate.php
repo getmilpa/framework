@@ -71,6 +71,10 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
         // ANTES (`refuse`) y ve su resultado DESPUÉS (`recorded`). Una compuerta aparte tendría que
         // reconstruir la segunda mitad, y serían dos verdades sobre lo mismo.
         private readonly ?SterileLoopGuard $vigiaDeBucle = null,
+        // LA COMPUERTA DE ORDEN (Q-P20-I), o `null` para correr como antes. Va aquí por lo mismo que
+        // el vigía: esta clase ya es las dos mitades —juzga antes, ve el resultado después— y una
+        // compuerta aparte tendría que reconstruir la segunda.
+        private readonly ?PrerequisiteGate $compuertaPrevia = null,
     ) {
     }
 
@@ -88,6 +92,15 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
         // como se pierde la que sí importaba.
         if ($this->esContabilidad($tool)) {
             return null;
+        }
+
+        // LA OBLIGACIÓN DE ORDEN VA ANTES QUE TODO LO DEMÁS, y por eso queda debajo de la
+        // contabilidad y encima de la operación: lo obligado suele SER contabilidad —«planea antes de
+        // empezar»— así que la línea de arriba tiene que dejarlo pasar siempre, o la obligación se
+        // volvería imposible de cumplir y la mesa no abriría nunca.
+        $falta = $this->compuertaPrevia?->motivoParaEsperar($tool);
+        if ($falta !== null) {
+            return $falta;
         }
 
         $operacion = $this->operationFor($tool);
@@ -270,6 +283,11 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
         // evento —`plan_set`, `todo_changed`— y el reductor lo devuelve como estado, que es como llega
         // a la ventana. Registrarla además como turno diría lo mismo dos veces y le cobraría a la
         // ventana el doble justo en las sesiones largas, donde el espacio es lo que escasea.
+        // LA COMPUERTA DE ORDEN SE ENTERA PRIMERO, antes del corte de abajo. Lo obligado casi siempre
+        // es contabilidad, y si aprendiera después del `return` no vería nunca que se cumplió: la mesa
+        // quedaría cerrada para siempre por el mismo hecho que venía a abrirla.
+        $this->compuertaPrevia?->anota($tool, $ok);
+
         if ($this->esContabilidad($tool)) {
             return;
         }
