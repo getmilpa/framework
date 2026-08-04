@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/getmilpa/framework/compare/v0.19.0...v0.20.0) (2026-08-04)
+
+
+### Features
+
+* **agent:** tablero, reparación gobernada y el TUI que dice quién habla ([c470588](https://github.com/getmilpa/framework/commit/c47058848ffca086a80aae2adfea07732de656a1))
+
 ## [0.19.0](https://github.com/getmilpa/framework/compare/v0.18.0...v0.19.0) (2026-08-04)
 
 
