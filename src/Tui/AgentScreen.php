@@ -148,6 +148,21 @@ final class AgentScreen implements SurfaceBroadcaster
         private readonly ?\Closure $catalogo = null,
         /** Cómo se cambia de sesión al elegir una en `/sessions`. */
         private readonly ?\Closure $continuar = null,
+        /**
+         * La pregunta abierta de un sub-agente de esta sesión, releída al preguntar y al pintar
+         * (Q-P19-Q). `null` si esta app no delega. El tipo es laxo A PROPÓSITO: lo provee el host,
+         * y esta pantalla valida la forma en vez de confiarla — un closure ajeno que devuelva otra
+         * cosa no puede romper el pintado.
+         *
+         * @var \Closure(): (array<string, mixed>|null)|null
+         */
+        private readonly ?\Closure $preguntaDeHijo = null,
+        /**
+         * Cómo se le contesta a un sub-agente: (sesión hija, respuesta) → eco.
+         *
+         * @var \Closure(string, string): array{ok: bool, granted?: string|null, error?: string}|null
+         */
+        private readonly ?\Closure $contestarHijo = null,
     ) {
         $this->loop = new RetainedTuiLoop(
             new RetainedTuiRenderer(new SimpleTuiLayoutEngine(), self::renderers()),
@@ -453,6 +468,30 @@ final class AgentScreen implements SurfaceBroadcaster
             return;
         }
 
+        // LA PREGUNTA DEL HIJO SE CONTESTA AQUÍ TAMBIÉN (Q-P19-Q): salirse del TUI a correr
+        // `agent:answer --session=<hijo>` era el hueco que el smoke de Q-P19-P dejó a la vista. La
+        // del padre va primero —bloquea ESTA pantalla—; la del hijo se atiende con la propia libre.
+        $hijo = $this->preguntaDeHijoPendiente();
+        if ($hijo !== null && $this->contestarHijo !== null) {
+            $eco = ($this->contestarHijo)($hijo['session'], $pregunta);
+            $this->conversacion[] = [
+                'quien' => 'agente',
+                'voz' => 'sistema',
+                'texto' => ($eco['ok'])
+                    ? '✓ contestado al sub-agente ' . $hijo['session']
+                        . (($eco['granted'] ?? null) !== null ? ' · autorizado: ' . $eco['granted'] : '')
+                    : '✗ ' . ($eco['error'] ?? ''),
+            ];
+            if ($eco['ok']) {
+                // EL RETOME SE PROPONE, NO SE DISPARA: queda escrito en el renglón de entrada para
+                // que el humano lo mande, lo edite o lo tire. Autoría honesta — la vuelta del padre
+                // la pide alguien, no un efecto colateral de contestar (criterio al usuario).
+                $this->entrada = 'Retoma al sub-agente ' . $hijo['session'] . ' con agent_resume.';
+            }
+
+            return;
+        }
+
         // UN SOLO ESTADO, Y ES EL QUE SE PUEDE SOSTENER.
         //
         // Lo que hace falta de verdad son cuatro —enviando, esperando al modelo, corriendo tal
@@ -546,6 +585,29 @@ final class AgentScreen implements SurfaceBroadcaster
     }
 
     /**
+     * La pregunta pendiente de un sub-agente, si la sesión propia no tiene una.
+     *
+     * LA DEL PADRE VA PRIMERO: con las dos abiertas, lo tecleado contesta la propia — es la que
+     * bloquea esta pantalla. La del hijo espera su turno, visible en cuanto la propia se libere.
+     *
+     * @return array{session: string, question: string, options: list<string>}|null
+     */
+    private function preguntaDeHijoPendiente(): ?array
+    {
+        if ($this->preguntaDeHijo === null || $this->sesionActual()?->question !== null) {
+            return null;
+        }
+
+        $hijo = ($this->preguntaDeHijo)();
+
+        return \is_array($hijo)
+            && \is_string($hijo['session'] ?? null)
+            && \is_string($hijo['question'] ?? null)
+            ? ['session' => $hijo['session'], 'question' => $hijo['question'], 'options' => \is_array($hijo['options'] ?? null) ? $hijo['options'] : []]
+            : null;
+    }
+
+    /**
      * Si la sesión no tiene todavía nada que mostrar.
      *
      * La portada reemplaza a la pantalla vacía, NO al estado: una sesión retomada con plan,
@@ -556,11 +618,14 @@ final class AgentScreen implements SurfaceBroadcaster
     {
         $sesion = $this->sesionActual();
 
-        return $sesion === null
+        return ($sesion === null
             || ($sesion->turns === []
                 && $sesion->question === null
                 && $sesion->plan === null
-                && $sesion->todos === []);
+                && $sesion->todos === []))
+            // La pausa de un sub-agente ES estado que enseñar: taparla con la portada dejaría a un
+            // hijo esperando detrás de una bienvenida (Q-P19-Q).
+            && $this->preguntaDeHijoPendiente() === null;
     }
 
     /**
@@ -916,8 +981,9 @@ final class AgentScreen implements SurfaceBroadcaster
         $altoTabla = $this->tabla !== null ? min(\count($this->tabla['filas']), 8) + 3 : 0;
 
         // separador · badge · barra de estado · prompt · ayuda, más aire; y tres más si hay una
-        // pregunta esperando, que se pinta con su motivo y sus opciones.
-        $chrome = 7 + ($sesion?->question !== null ? 3 : 0) + $altoTabla;
+        // pregunta esperando —propia o de un sub-agente—, que se pinta con su motivo y sus opciones.
+        $deHijo = $sesion?->question === null ? $this->preguntaDeHijoPendiente() : null;
+        $chrome = 7 + (($sesion?->question !== null || $deHijo !== null) ? 3 : 0) + $altoTabla;
         $presupuesto = max(3, $this->height - \count($hijos) - $chrome);
         foreach (\array_slice($lineas, -$presupuesto) as [$id, $texto, $voz]) {
             $hijos[] = $voz === 'agente'
@@ -940,6 +1006,17 @@ final class AgentScreen implements SurfaceBroadcaster
             if ($pendiente->options !== []) {
                 $hijos[] = new TuiNode('pregunta-op', 'text', props: [
                     'text' => '  ' . implode(' · ', $pendiente->options),
+                ]);
+            }
+        } elseif ($deHijo !== null) {
+            // La pausa del sub-agente ocupa el mismo lugar que ocuparía la propia: es lo que hay que
+            // hacer. El id va adentro para que quien conteste sepa A QUIÉN le está contestando.
+            $hijos[] = new TuiNode('pregunta', 'text', props: [
+                'text' => '⏸ (sub-agente ' . $deHijo['session'] . ') ' . $deHijo['question'],
+            ]);
+            if ($deHijo['options'] !== []) {
+                $hijos[] = new TuiNode('pregunta-op', 'text', props: [
+                    'text' => '  ' . implode(' · ', $deHijo['options']),
                 ]);
             }
         }

@@ -987,4 +987,86 @@ final class AgentScreenTest extends TestCase
         $pantalla->render();
         self::assertSame($cuantos, \count($pantalla->conversation()));
     }
+
+    /**
+     * LA PAUSA DEL SUB-AGENTE SE VE Y SE CONTESTA SIN SALIR (Q-P19-Q, falsificador 5).
+     *
+     * La respuesta va A LA SESIÓN DEL HIJO —no a la propia— y el retome se PROPONE en el renglón de
+     * entrada, no se dispara: la vuelta del padre la pide alguien, no un efecto colateral.
+     */
+    public function testAChildsQuestionIsAnsweredToTheChildAndTheResumeIsProposed(): void
+    {
+        $sesion = new Session('jornada', 'migrar Inventario');
+        $contestado = null;
+        $pantalla = new AgentScreen(
+            static fn (string $q): array => ['ok' => true, 'answer' => 'no debería llegar aquí'],
+            static fn (): Session => $sesion,
+            static function (string $r): array {
+                self::fail('la respuesta era para el hijo, no para la sesión propia');
+            },
+            74,
+            24,
+            false,
+            preguntaDeHijo: static fn (): array => [
+                'session' => 'jornada.sub-abc123',
+                'question' => 'El agente quiere correr «make». ¿Lo autorizas?',
+                'options' => ['sí', 'no'],
+            ],
+            contestarHijo: static function (string $hijo, string $respuesta) use (&$contestado): array {
+                $contestado = [$hijo, $respuesta];
+
+                return ['ok' => true, 'granted' => 'make'];
+            },
+        );
+
+        self::assertStringContainsString('(sub-agente jornada.sub-abc123)', $pantalla->render(), 'la pausa del hijo se ve, con su dueño');
+
+        $this->teclear($pantalla, 'sí');
+        $pantalla->press('enter');
+
+        self::assertSame(['jornada.sub-abc123', 'sí'], $contestado, 'la respuesta viajó a la sesión del hijo');
+        $ultimo = $pantalla->conversation()[\count($pantalla->conversation()) - 1];
+        self::assertStringContainsString('contestado al sub-agente jornada.sub-abc123', $ultimo['texto']);
+        self::assertStringContainsString('autorizado: make', $ultimo['texto']);
+        self::assertStringContainsString(
+            'Retoma al sub-agente jornada.sub-abc123 con agent_resume.',
+            $pantalla->render(),
+            'el retome quedó propuesto en el renglón, listo para mandarse o editarse',
+        );
+    }
+
+    /** Con las dos preguntas abiertas, lo tecleado contesta la PROPIA: es la que bloquea esta pantalla. */
+    public function testTheParentsQuestionWinsOverTheChilds(): void
+    {
+        $sesion = new Session('jornada', 'x', question: new PendingQuestion(
+            id: 'perm:make',
+            question: '¿autorizas make aquí?',
+            options: ['sí', 'no'],
+            why: '{}',
+        ));
+        $contestadoPropio = null;
+        $pantalla = new AgentScreen(
+            static fn (string $q): array => ['ok' => true],
+            static fn (): Session => $sesion,
+            static function (string $respuesta) use (&$contestadoPropio): array {
+                $contestadoPropio = $respuesta;
+
+                return ['ok' => true];
+            },
+            74,
+            24,
+            false,
+            preguntaDeHijo: static function (): array {
+                self::fail('con la propia abierta, la del hijo ni se consulta');
+            },
+            contestarHijo: static function (): array {
+                self::fail('la respuesta era para la sesión propia');
+            },
+        );
+
+        $this->teclear($pantalla, 'sí');
+        $pantalla->press('enter');
+
+        self::assertSame('sí', $contestadoPropio);
+    }
 }

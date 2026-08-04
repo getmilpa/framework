@@ -66,6 +66,11 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
         // vacía —lo que había— simplemente desactiva la verificación, que es el comportamiento de
         // toda sesión anterior a que esto existiera.
         private readonly string $petition = '',
+        // EL VIGÍA DEL BUCLE ESTÉRIL (Q-P19-R), o `null` para correr como antes. Va aquí y no en su
+        // propia compuerta porque esta clase ya es las dos mitades que hacen falta: juzga la llamada
+        // ANTES (`refuse`) y ve su resultado DESPUÉS (`recorded`). Una compuerta aparte tendría que
+        // reconstruir la segunda mitad, y serían dos verdades sobre lo mismo.
+        private readonly ?SterileLoopGuard $vigiaDeBucle = null,
     ) {
     }
 
@@ -111,11 +116,29 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
             return $this->pause($duda);
         }
 
+        // NO REPETIR LO QUE YA FALLÓ DOS VECES IGUAL (Q-P19-R). Va después del contrato de intención
+        // y antes de la política: no es una cuestión de autoridad —nadie está pidiendo permiso para
+        // nada— sino de no gastar el presupuesto en una llamada cuyo resultado ya se conoce.
+        //
+        // NO PAUSA LA SESIÓN. Devuelve el motivo sin apendar pregunta: aquí no hay nada que un humano
+        // deba decidir, y detener la vuelta por esto sería cobrarle al humano un descuido del modelo.
+        // El bucle del agente sigue —`optionRemoved` en la excepción que arma quien nos llama— y el
+        // modelo recibe el hecho con el error adentro, que es con lo que puede corregir.
+        $bucle = $this->vigiaDeBucle?->motivoParaNoRepetir($tool, $arguments);
+        if ($bucle !== null) {
+            return $bucle;
+        }
+
         $decision = $this->policy->decide(
             $this->session,
             $operacion->name,
             $operacion->mutating,
             $operacion->requiresConfirmation,
+            // El techo se pide AQUÍ, por llamada, y no se guarda en el constructor: si el padre baja
+            // a `ask` a media corrida del hijo, la siguiente herramienta ya lo siente. Un techo
+            // cacheado se queda viejo exactamente cuando el humano acaba de decidir supervisar —
+            // la clase de defecto que Q-P20-B midió (la foto contra el estado vigente).
+            $this->sessions->ceilingFor($this->session->id),
         );
 
         return match ($decision) {
@@ -250,6 +273,10 @@ final class SessionToolGate implements ToolCallGate, ToolCallRecorder
         if ($this->esContabilidad($tool)) {
             return;
         }
+
+        // El vigía ve TODO lo que se ejecutó, incluidas las llamadas de operaciones que esta app no
+        // declara: un bucle estéril sobre una herramienta externa gasta el mismo presupuesto.
+        $this->vigiaDeBucle?->anota($tool, $arguments, $result, $ok);
 
         // SI LA LLAMADA MUTABA, lo sabe esta compuerta: tiene la operación delante. El stream no lo
         // guardaba, así que no distinguía mirar de mover — y sin esa distinción no se puede verificar

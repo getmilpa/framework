@@ -346,4 +346,66 @@ final class SessionToolGateTest extends TestCase
             'el sí fue sobre HelloPlugin — otro objetivo es otra pregunta',
         );
     }
+
+    /**
+     * EL TECHO DEL LINAJE GANA SOBRE EL MODO DECLARADO DEL HIJO (Q-P19-P, invariante 2 de la spec).
+     *
+     * Un hijo en `auto` bajo un padre en `ask` pausa ante su primera mutación. Sin esto, spawnearle
+     * un hijo `auto` a una sesión supervisada sería la escalada de privilegio con un paso extra —
+     * y el juez que la impide existía desde antes; lo que se prueba aquí es que el camino real lo
+     * consulta.
+     */
+    public function testAChildInAutoUnderAnAskParentPausesBeforeMutating(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('padre', 'la tarea grande', AutonomyMode::Ask);
+        $almacen->start('hijo', 'la sub-tarea', AutonomyMode::Auto, parentId: 'padre');
+        $sesion = $almacen->load('hijo');
+        self::assertNotNull($sesion);
+
+        $compuerta = new SessionToolGate($almacen, $sesion, $this->operaciones());
+
+        self::assertNotNull($compuerta->refuse('make', []), 'el techo del linaje gana');
+        self::assertFalse($almacen->load('hijo')?->isRunnable() ?? true, 'el hijo quedó esperando');
+    }
+
+    /** El control: bajo un padre en `auto`, el hijo `auto` sigue de largo — el techo no estorba. */
+    public function testAChildInAutoUnderAnAutoParentRunsWithoutPausing(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('padre', 'la tarea grande', AutonomyMode::Auto);
+        $almacen->start('hijo', 'la sub-tarea', AutonomyMode::Auto, parentId: 'padre');
+        $sesion = $almacen->load('hijo');
+        self::assertNotNull($sesion);
+
+        $compuerta = new SessionToolGate($almacen, $sesion, $this->operaciones());
+
+        self::assertNull($compuerta->refuse('make', []));
+    }
+
+    /**
+     * EL TECHO SE REPROYECTA, NO SE FOTOGRAFÍA (doctrina de Q-P20-B, falsificador 3 de Q-P19-P).
+     *
+     * Si el padre baja a `ask` a media corrida del hijo, la SIGUIENTE herramienta del hijo ya lo
+     * siente — con la misma compuerta, sin reconstruir nada. Un techo cacheado en construcción se
+     * quedaría viejo exactamente cuando el humano acaba de decidir supervisar.
+     */
+    public function testTheCeilingIsReprojectedNotPhotographed(): void
+    {
+        $almacen = new SessionStore(new InMemoryEventStore());
+        $almacen->start('padre', 'la tarea grande', AutonomyMode::Auto);
+        $almacen->start('hijo', 'la sub-tarea', AutonomyMode::Auto, parentId: 'padre');
+        $sesion = $almacen->load('hijo');
+        self::assertNotNull($sesion);
+
+        $compuerta = new SessionToolGate($almacen, $sesion, $this->operaciones());
+        self::assertNull($compuerta->refuse('make', []), 'con el padre en auto, pasa');
+
+        $almacen->setMode('padre', AutonomyMode::Ask);
+
+        self::assertNotNull(
+            $compuerta->refuse('make', []),
+            'el padre bajó a ask y la misma compuerta lo siente en la siguiente llamada',
+        );
+    }
 }

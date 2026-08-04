@@ -293,4 +293,79 @@ final class ApplicationTest extends TestCase
         self::assertFalse($inexistente['ok'], 'no abre una sesión vacía con ese nombre');
         self::assertStringContainsString('no existe la sesión', (string) $inexistente['error']);
     }
+
+    /**
+     * LA PREGUNTA DEL SUB-AGENTE SE BUSCA POR FILIACIÓN, NO POR NOMBRE (Q-P19-Q).
+     *
+     * El prefijo `<padre>.sub-` es convención del spawner; lo que decide es el `parentId` apendado en
+     * el stream del hijo. Una sesión que se llamara así sin descender de esta no es hija de nadie, y
+     * pintar su pregunta en esta pantalla sería ofrecerle al humano contestar por un árbol ajeno.
+     */
+    public function testAChildsPendingQuestionIsFoundByLineageAndNotByName(): void
+    {
+        // La raíz del paquete, que ES una app Milpa — igual que el test de `/sessions` de arriba. Los
+        // ids llevan sufijo aleatorio porque el almacén es el de esa app y no se puede borrar de él:
+        // un stream es una bitácora, no una tabla.
+        $j = 'jornada-' . bin2hex(random_bytes(3));
+        $app = new Application(\dirname(__DIR__, 2));
+
+        $almacen = (new \ReflectionMethod($app, 'almacenDeSesiones'))->invoke($app);
+        if (!$almacen instanceof \Milpa\Agent\SessionStore) {
+            self::markTestSkipped('esta app no guarda sesiones');
+        }
+
+        (new \ReflectionProperty($app, 'sesionDelChatId'))->setValue($app, $j);
+        $almacen->start($j, 'la tarea grande');
+        // Se llama como una hija y NO lo es: sin `parentId`, no cuenta.
+        $almacen->start($j . '.sub-impostor', 'ajena');
+        $almacen->ask($j . '.sub-impostor', new \Milpa\Agent\PendingQuestion(
+            id: 'perm:make',
+            question: '¿autorizas algo ajeno?',
+            options: ['sí', 'no'],
+        ));
+
+        $buscar = new \ReflectionMethod($app, 'preguntaDeHijoPausado');
+        self::assertNull($buscar->invoke($app), 'el prefijo del nombre no basta');
+
+        // Y una hija de verdad sí aparece, con su id para que quien conteste sepa a quién.
+        $almacen->start($j . '.sub-real', 'la sub-tarea', parentId: $j);
+        $almacen->ask($j . '.sub-real', new \Milpa\Agent\PendingQuestion(
+            id: 'perm:make',
+            question: '¿autorizas make?',
+            options: ['sí', 'no'],
+        ));
+
+        $hijo = $buscar->invoke($app);
+        self::assertIsArray($hijo);
+        self::assertSame($j . '.sub-real', $hijo['session']);
+        self::assertSame('¿autorizas make?', $hijo['question']);
+        self::assertSame(['sí', 'no'], $hijo['options']);
+    }
+
+    /** Y contestarle al hijo va por la MISMA operación que contesta las propias, con su id. */
+    public function testAnsweringAChildGoesThroughTheSameOperationWithItsOwnId(): void
+    {
+        $j = 'jornada-' . bin2hex(random_bytes(3));
+        $app = new Application(\dirname(__DIR__, 2));
+
+        $almacen = (new \ReflectionMethod($app, 'almacenDeSesiones'))->invoke($app);
+        if (!$almacen instanceof \Milpa\Agent\SessionStore) {
+            self::markTestSkipped('esta app no guarda sesiones');
+        }
+
+        (new \ReflectionProperty($app, 'sesionDelChatId'))->setValue($app, $j);
+        $almacen->start($j, 'x');
+        $almacen->start($j . '.sub-real', 'y', parentId: $j);
+        $almacen->ask($j . '.sub-real', new \Milpa\Agent\PendingQuestion(
+            id: 'perm:make',
+            question: '¿autorizas make?',
+            options: ['sí', 'no'],
+        ));
+
+        $eco = (new \ReflectionMethod($app, 'contestarAlHijo'))->invoke($app, $j . '.sub-real', 'sí');
+
+        self::assertTrue($eco['ok'] ?? false);
+        self::assertNull($almacen->load($j . '.sub-real')?->question, 'el hijo dejó de esperar');
+        self::assertNull($almacen->load($j)?->question, 'y la del padre no se tocó');
+    }
 }

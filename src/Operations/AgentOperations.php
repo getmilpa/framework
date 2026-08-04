@@ -29,6 +29,8 @@ use App\Agent\RecordOnlyOptionTable;
 use App\Agent\SessionOptionTable;
 use App\Agent\SessionPlanBoard;
 use App\Agent\StepWatcher;
+use App\Agent\SterileLoopGuard;
+use App\Agent\SubAgentSpawner;
 use Milpa\AiGateway\ToolCallGate;
 use Milpa\AiGateway\ToolCallRecorder;
 use Milpa\Agent\AutonomyMode;
@@ -252,11 +254,75 @@ class AgentOperations implements CommandProvider
                     // La petición de ESTA corrida, no el goal de la sesión: el contrato de intención
                     // (ADR-0044) compara los argumentos contra lo que el humano acaba de pedir.
                     petition: $prompt,
+                    vigiaDeBucle: $this->vigiaDeBucle(),
                 );
                 // ATADAS a esta sesión: el id se captura, no se le pide al modelo. Uno que el modelo
                 // pudiera nombrar es uno que puede errar, y escribirle el plan a otra sesión no es una
                 // equivocación recuperable — quien la lea mañana verá un plan que su agente no escribió.
                 $contabilidad = (new SessionBookkeeping($almacen, $sesionId))->operations();
+
+                // LA DELEGACIÓN (Q-P19-P). El hijo es una sesión con `parentId` corriendo por los
+                // MISMOS rieles: mismo orquestador, misma compuerta —que ya pide el techo del linaje
+                // en cada llamada—, mismo almacén. El catálogo del hijo sale de su propia
+                // contabilidad SIN spawn: profundidad 1 por construcción, y el presupuesto del árbol
+                // (§5.4) queda diferido con esa misma decisión a la vista.
+                $spawner = new SubAgentSpawner(
+                    $almacen,
+                    $sesionId,
+                    function (string $encargo, string $hijoId, array $historialHijo) use ($almacen, $kernel, $pasos, $proveedor, $llave, $modelo): array {
+                        $hijo = $almacen->load($hijoId);
+                        if ($hijo === null) {
+                            return ['answer' => 'la sesión hija no se pudo abrir', 'steps' => 0];
+                        }
+
+                        $compuertaHijo = new SessionToolGate(
+                            $almacen,
+                            $hijo,
+                            Operations::all($kernel, $kernel->root()),
+                            permissionWindow: $this->permissionWindow(),
+                            // El contrato de intención del hijo compara contra SU encargo: lo que el
+                            // padre le pidió es, para el hijo, lo que el humano es para el padre.
+                            petition: $encargo,
+                            // El hijo tiene el SUYO, nuevo: el presupuesto que gasta repitiendo es
+                            // el suyo, y los fallos del padre no son los de él.
+                            vigiaDeBucle: $this->vigiaDeBucle(),
+                        );
+                        $registroHijo = $this->toolsOfThisApp((new SessionBookkeeping($almacen, $hijoId))->operations());
+                        if ($registroHijo === null) {
+                            return ['answer' => 'esta app no expuso ninguna operación como herramienta', 'steps' => 0];
+                        }
+
+                        $vistosHijo = 0;
+
+                        // EL HISTORIAL LO DECIDE EL SPAWNER, no este cableado: vacío al spawnear
+                        // (§5.1, el contexto fresco es la razón de ser) y la ventana del hijo al
+                        // retomar (Q-P19-Q, retomar no es re-spawnear).
+                        $respuestaHijo = $this->ask(
+                            $encargo,
+                            $pasos,
+                            $registroHijo,
+                            $proveedor,
+                            $llave,
+                            $modelo,
+                            function () use (&$vistosHijo): void {
+                                ++$vistosHijo;
+                            },
+                            $historialHijo,
+                            $compuertaHijo,
+                            // LA MESA DEL HIJO, que antes iba en `null` y por eso una opción retirada
+                            // no salía de su catálogo. Es lo que vuelve ejecutable el `deny` de
+                            // `agent_spawn`: sin ella, prohibirle una herramienta sería otra frase
+                            // más — y Q-P20-G midió cuánto valen las frases (0/8).
+                            new SessionOptionTable($almacen, $hijoId),
+                            $compuertaHijo,
+                            $this->tableroDePlan($hijoId, $almacen),
+                        );
+
+                        return ['answer' => $respuestaHijo, 'steps' => $vistosHijo];
+                    },
+                );
+                $contabilidad[] = $spawner->operation();
+                $contabilidad[] = $spawner->resumeOperation();
             }
         }
 
@@ -602,6 +668,25 @@ class AgentOperations implements CommandProvider
      * Que exista esta perilla es lo que destapó la enmienda 4 de esa pregunta: el «control» del diseño
      * anterior ya traía la instrucción puesta, así que habría sido el mismo brazo dos veces.
      */
+    /**
+     * Si esta app se niega a repetir una llamada que ya falló dos veces igual (Q-P19-R).
+     *
+     * `agent.sterileLoopGuard` en `config/app.php`. Apagada por default mientras la pregunta esté
+     * abierta, por la misma razón que las demás perillas de esta familia: lo que se despacha es lo
+     * ya medido, no lo que se está midiendo. Un entero fija la tolerancia; `true` usa la de casa.
+     */
+    private function vigiaDeBucle(): ?SterileLoopGuard
+    {
+        $config = $this->container->has(Config::class) ? $this->container->get(Config::class) : null;
+        $valor = $config instanceof Config ? $config->get('agent.sterileLoopGuard') : null;
+
+        if (\is_int($valor) && $valor > 0) {
+            return new SterileLoopGuard($valor);
+        }
+
+        return $valor === true ? new SterileLoopGuard() : null;
+    }
+
     private function instruccionDePlan(): bool
     {
         $config = $this->container->has(Config::class) ? $this->container->get(Config::class) : null;

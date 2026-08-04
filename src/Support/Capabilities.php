@@ -81,6 +81,22 @@ final class Capabilities
      * paquete Milpa que este piso no conozca lo verá igual en `installed`, con lo que ese paquete diga
      * de sí mismo: esta lista no es una autorización, es una invitación.
      *
+     * ── Y POR QUÉ ESTA LISTA TIENE FECHA DE CADUCIDAD ───────────────────────────────────────────
+     *
+     * Porque «un paquete ausente no puede anunciarse» es cierto **en el disco** y falso **en la red**:
+     * Packagist publica el `composer.json` completo de cada versión, `extra.milpa.capability`
+     * incluido. Verificado el 2026-08-03 contra `repo.packagist.org/p2/milpa/agent.json`: el
+     * `unlocks` que aquí falta, ahí está.
+     *
+     * Desde ese día los paquetes que se anuncian declaran `"type": "milpa-capability"`, que es lo que
+     * los vuelve descubribles **por lo que son y no por cómo se llaman** — antes había que adivinar
+     * por el prefijo `milpa/`, lo que dejaba fuera a cualquier tercero, que es justo a quien un
+     * sistema acoplable tiene que dejar entrar.
+     *
+     * Esta lista sobrevive como el piso OFFLINE —un agente que no puede alcanzar la red igual tiene
+     * que poder decir qué existe— y ese papel sí es legítimo. Lo que ya no debe hacer es ser la única
+     * respuesta: cuando exista el índice derivado, ésta pasa a ser su caché con fecha declarada.
+     *
      * @return array<string, string>
      */
     public static function knownOptIns(): array
@@ -353,6 +369,34 @@ final class Capabilities
             ];
         }
 
+        // UN CERO DE COMPOSER NO ES LA PRUEBA DE QUE LA CAPACIDAD LLEGÓ.
+        //
+        // El código de salida es una afirmación del subproceso **sobre sí mismo**: dice que composer
+        // terminó, no que esta app pueda algo nuevo. Los dos casos se separan porque se dan en la
+        // vida real — un `require` que resuelve a una versión sin la declaración, un paquete que la
+        // trae mal formada, un «Nothing to install or update» sobre un nombre que no existía.
+        //
+        // Sin esta comprobación el resultado sería `ok: true` con `unlocked: []`, y un campo que
+        // siempre puede venir vacío es la clase de defecto que este repositorio lleva una semana
+        // cazando: algo declarado que nunca aterriza. La capacidad se comprueba donde existe —el
+        // disco— releyendo lo que el paquete declara de sí mismo.
+        $llego = self::unlocksOf((string) $objetivo['package'], $vendor);
+        if (!isset(self::declaredBy($vendor)[(string) $objetivo['package']])) {
+            return [
+                'ok' => false,
+                'capability' => $objetivo['package'],
+                'command' => $comando,
+                'error' => sprintf(
+                    'el comando terminó bien pero la capacidad «%s» no apareció: el paquete no está '
+                    . 'declarando su capacidad en este vendor.',
+                    (string) $objetivo['package'],
+                ),
+                // La salida real, por lo mismo que en el fallo de arriba: composer sabe por qué.
+                'output' => implode("\n", \array_slice($salida, -12)),
+                'hint' => 'corre el comando a mano para ver qué resolvió',
+            ];
+        }
+
         return [
             'ok' => true,
             'capability' => $objetivo['package'],
@@ -361,7 +405,7 @@ final class Capabilities
             // before it was on disk, so reading `$objetivo` here would always return an empty list:
             // a field that is always empty is the same defect this repo keeps finding, something
             // declared that never lands.
-            'unlocked' => self::unlocksOf((string) $objetivo['package'], $vendor),
+            'unlocked' => $llego,
             'hint' => 'run `coa list` to see the new operations',
         ];
     }

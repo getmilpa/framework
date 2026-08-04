@@ -311,6 +311,8 @@ final class Application
                 continuar: function (string $id): void {
                     $this->sesionDelChatId = $id;
                 },
+                preguntaDeHijo: $this->preguntaDeHijoPausado(...),
+                contestarHijo: $this->contestarAlHijo(...),
             );
 
             // LA PANTALLA SE REGISTRA COMO SUPERFICIE, y por eso recibe lo que el agente hace
@@ -529,6 +531,62 @@ final class Application
     }
 
     /**
+     * @return array{ok: bool, granted?: string|null, error?: string}
+     */
+    /**
+     * La pregunta abierta de un sub-agente DIRECTO de la sesión del chat, o `null` (Q-P19-Q).
+     *
+     * Se relee del almacén en cada consulta — reproyección, no foto: un hijo que pausó mientras el
+     * humano leía tiene que aparecer sin reabrir nada. Sólo hijos directos: la profundidad 1 es la
+     * del spawner, y esta lectura no debe ver más árbol que el que existe.
+     *
+     * @return array{session: string, question: string, options: list<string>}|null
+     */
+    private function preguntaDeHijoPausado(): ?array
+    {
+        $almacen = $this->almacenDeSesiones();
+        if ($almacen === null) {
+            return null;
+        }
+
+        foreach ($almacen->ids() as $id) {
+            if (!str_starts_with($id, $this->sesionDelChatId . '.sub-')) {
+                continue;
+            }
+            $hijo = $almacen->load($id);
+            // `parentId` del stream, no el prefijo del nombre: el nombre es convención del spawner,
+            // la filiación es un hecho apendado — y es el hecho el que decide.
+            if ($hijo === null || $hijo->parentId !== $this->sesionDelChatId || $hijo->question === null) {
+                continue;
+            }
+
+            return [
+                'session' => $id,
+                'question' => $hijo->question->question,
+                'options' => $hijo->question->options,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Contesta la pregunta de un sub-agente, por la MISMA operación que contesta las propias.
+     *
+     * @return array{ok: bool, granted?: string|null, error?: string}
+     */
+    private function contestarAlHijo(string $hijo, string $respuesta): array
+    {
+        /** @var array{ok: bool, granted?: string|null, error?: string} $r */
+        $r = $this->correr('agent:answer', ['session' => $hijo, 'answer' => $respuesta])
+            ?? ['ok' => false, 'error' => 'esta app no declara la operación `agent:answer`'];
+
+        return $r;
+    }
+
+    /**
+     * Contesta la pregunta pendiente de la sesión del chat — el `agent:answer` sin salir del TUI.
+     *
      * @return array{ok: bool, granted?: string|null, error?: string}
      */
     private function contestarEnElChat(string $respuesta): array

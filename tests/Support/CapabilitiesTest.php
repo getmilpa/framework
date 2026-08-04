@@ -322,9 +322,78 @@ final class CapabilitiesTest extends TestCase
             return [0, ['ok']];
         });
 
-        self::assertTrue($r['ok']);
-        self::assertSame('composer require milpa/agent', $corrio);
+        self::assertSame('composer require milpa/agent', $corrio, 'corrió el comando exacto');
         self::assertSame('composer require milpa/agent', $r['command']);
+        // Y NO dice `ok` — porque el vendor de la prueba no cambió, así que la capacidad no apareció.
+        // Ver el caso de abajo: el código de salida de composer es una afirmación de composer sobre
+        // sí mismo, no la prueba de que la capacidad esté.
+        self::assertFalse($r['ok'], 'el comando salió bien y la capacidad no llegó');
+    }
+
+    /**
+     * UN CERO DE COMPOSER NO ES LA PRUEBA DE QUE LA CAPACIDAD LLEGÓ.
+     *
+     * El código de salida es una afirmación del subproceso sobre sí mismo; que la capacidad exista se
+     * comprueba leyendo el disco después. Sin esta distinción, `capabilities:enable` devolvería un
+     * éxito con `unlocked: []` —un campo siempre vacío, la clase de defecto que este repositorio lleva
+     * una semana cazando— y quien preguntara «¿ya puedo?» recibiría un sí que nadie verificó.
+     */
+    public function testACleanExitCodeIsNotProofTheCapabilityArrived(): void
+    {
+        $r = Capabilities::install(
+            'milpa/agent',
+            $this->vendorCon([]),           // el vendor NO cambia: nada se instaló de verdad
+            static fn (string $c): array => [0, ['Nothing to install or update']],
+        );
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('no apareció', $r['error']);
+        self::assertStringContainsString('milpa/agent', $r['error']);
+        self::assertSame('composer require milpa/agent', $r['command'], 'con el comando que corrió, para poder repetirlo a mano');
+        self::assertArrayNotHasKey('unlocked', $r, 'y sin una lista vacía que parezca un resultado');
+    }
+
+    /**
+     * Cuando SÍ aparece, lo dice con lo que desbloqueó — leído del disco DESPUÉS, no del comando.
+     *
+     * El runner es quien «instala»: escribe el `installed.json` como lo dejaría composer. Es la misma
+     * costura que el resto de esta clase usa —lo que una prueba no puede arreglar, lo inyecta— y aquí
+     * hace exactamente lo que hace falta: separar «el comando corrió» de «la capacidad llegó».
+     */
+    public function testWhenTheCapabilityDoesArriveItSaysWhatItUnlocked(): void
+    {
+        $vendor = $this->vendorCon([]);   // nada puesto al empezar
+        $prueba = $this;
+
+        $r = Capabilities::install(
+            'milpa/agent',
+            $vendor,
+            static function (string $c) use ($prueba): array {
+                // Composer aterrizó el paquete: el vendor ahora lo declara.
+                $prueba->instalarEnElVendor('milpa/agent', 'agent', ['coa chat', 'agent:sessions']);
+
+                return [0, ['ok']];
+            },
+        );
+
+        self::assertTrue($r['ok']);
+        self::assertSame(['coa chat', 'agent:sessions'], $r['unlocked'], 'lo que desbloqueó, del disco');
+    }
+
+    /**
+     * Deja el vendor de la prueba declarando un paquete — lo que composer habría hecho.
+     *
+     * @param list<string> $unlocks
+     */
+    public function instalarEnElVendor(string $paquete, string $id, array $unlocks): void
+    {
+        $this->vendorCon([
+            ['name' => $paquete, 'extra' => ['milpa' => ['capability' => [
+                'id' => $id,
+                'title' => 'lo que sea',
+                'unlocks' => $unlocks,
+            ]]]],
+        ]);
     }
 
     /**

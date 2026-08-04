@@ -77,6 +77,19 @@ return [
     //     'instructions' => 'Los precios de esta app van en centavos.',
     //     'compaction' => ['maxTurns' => 40, 'keepRecent' => 12],
     //     'permissionWindow' => 'PT8H',
+    //
+    //     // QUÉ LLAMADAS AMERITAN UN SEGUNDO LECTOR ANTES DE PREGUNTARTE.
+    //     //
+    //     // Van por NOMBRE DE HERRAMIENTA, que es el de la operación con lo no alfanumérico
+    //     // convertido a `_` (`capabilities:enable` → `capabilities_enable`) — así lo proyecta
+    //     // `McpProjector::toolName()`, y es contra eso que el juez compara.
+    //     //
+    //     // `capabilities_enable` viene primero por una razón de clase, no de gusto: instalar un
+    //     // paquete corre código de la red EN ESTA MÁQUINA y cambia las dependencias de la app. La
+    //     // compuerta de permisos la trata igual que a un `make` —muta, se pregunta— y no es igual.
+    //     // Un verificador que la clasifique antes te da con qué contestar; sin él, el «¿autorizas
+    //     // capabilities:enable?» te llega sin nada que evaluar salvo el nombre.
+    //     'secondOpinion' => ['capabilities_enable'],
     // ],
 
     // 'storage' => [
