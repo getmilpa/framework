@@ -159,7 +159,84 @@ final class SessionOperations implements CommandProvider
                 scopes: ['agent:answer'],
                 surfaces: ['cli', 'tui', 'mcp', 'http'],
             ),
+            new Operation(
+                name: 'agent:discard',
+                description: 'Discard a session: it stops waiting and nothing can resume it',
+                handler: fn (array $input, ?InvocationContext $ctx = null): array => $this->descartar($input, $ctx),
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'session' => ['type' => 'string', 'description' => 'Identificador de la sesión'],
+                        'because' => ['type' => 'string', 'description' => 'Por qué se descarta — queda en el stream'],
+                    ],
+                    'required' => ['session', 'because'],
+                ],
+                mutating: true,
+                // MISMO PISO QUE CONTESTAR: descartar decide sobre una sesión, así que exige actor
+                // verificado en todo canal que prometa identidad.
+                scopes: ['agent:answer'],
+                surfaces: ['cli', 'tui', 'mcp', 'http'],
+            ),
         ];
+    }
+
+    /**
+     * DESCARTAR ES DEL HUMANO, y por eso esta operación no entra al catálogo del agente.
+     *
+     * Cierra el contrato «control» de P19.3: *«detener, retomar, descartar — y quién puede hacerlo. Un
+     * hijo que no se puede detener no es un sub-agente, es una fuga»*. Retomar ya existía
+     * (`agent_resume`) y detener el árbol entero también (la interrupción del humano viaja hacia
+     * arriba). Lo que faltaba era **descartar**: un hijo que pausó preguntando y a quien nadie contesta
+     * se quedaba abierto para siempre, esperando a alguien que ya no va a llegar.
+     *
+     * ── POR QUÉ NO SE LO DAMOS AL PADRE ─────────────────────────────────────────────────────────
+     *
+     * Es tentador y está mal. Un hijo pausa pidiendo permiso para algo; si el padre pudiera
+     * descartarlo, la pregunta que el humano tenía que ver **desaparecería sin que nadie la viera**, y
+     * el registro diría que la sesión se cerró en vez de que un permiso quedó sin pedir. No otorga
+     * nada, pero hace invisible lo que existía para ser visto — que es la misma clase de lavado que
+     * `agent:answer` y `agent:mode` evitan quedándose fuera del catálogo (Q-P19-M).
+     *
+     * El control del padre sobre su hijo ya existe y es suficiente: **no retomarlo**.
+     *
+     * @param array<string, mixed> $input
+     *
+     * @return array{ok: bool, session?: string, error?: string, hint?: string}
+     */
+    private function descartar(array $input, ?InvocationContext $ctx = null): array
+    {
+        if ($ctx !== null && $ctx->channel !== 'cli' && !$ctx->isAttributable()) {
+            return [
+                'ok' => false,
+                'error' => sprintf(
+                    'descartar por «%s» exige un actor verificado, y esta invocación no lo trae',
+                    $ctx->channel,
+                ),
+                'hint' => 'autentica la petición: cerrar una sesión sin principal no es auditable',
+            ];
+        }
+
+        [$almacen, $id, $error] = $this->target($input);
+        if ($error !== null || $almacen === null) {
+            return $error ?? ['ok' => false, 'error' => 'esta app no tiene dónde guardar sesiones'];
+        }
+
+        // EL MOTIVO ES OBLIGATORIO. Una sesión que se cierra sin decir por qué deja a quien lea el
+        // stream mañana con un final y ninguna causa — y el caso que esto atiende es justamente una
+        // pregunta que nadie contestó: sin el motivo, se ve idéntico a un trabajo terminado.
+        $porque = \is_string($input['because'] ?? null) ? trim($input['because']) : '';
+        if ($porque === '') {
+            return ['ok' => false, 'error' => 'falta `because`: por qué se descarta, y queda en el stream'];
+        }
+
+        $sesion = $almacen->load($id);
+        if ($sesion === null) {
+            return ['ok' => false, 'error' => "no existe la sesión «{$id}»"];
+        }
+
+        $almacen->end($id, $porque);
+
+        return ['ok' => true, 'session' => $id];
     }
 
     /**

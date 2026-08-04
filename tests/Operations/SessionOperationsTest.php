@@ -619,4 +619,42 @@ final class SessionOperationsTest extends TestCase
             }
         }
     }
+
+    /**
+     * DESCARTAR CIERRA LA SESIÓN Y DEJA EL MOTIVO — el contrato «control» de P19.3.
+     *
+     * Un hijo que pausó preguntando y a quien nadie contesta se quedaba abierto para siempre. Lo que
+     * cierra la fuga no es sólo terminarla: es que el stream diga POR QUÉ, porque un final sin causa
+     * se lee idéntico a un trabajo terminado.
+     */
+    public function testDiscardingASessionEndsItAndLeavesTheReasonBehind(): void
+    {
+        $this->almacen()->start('j', 'la tarea');
+
+        $r = $this->llamar('agent:discard', ['session' => 'j', 'because' => 'la pregunta ya no aplica']);
+
+        self::assertTrue($r['ok']);
+        self::assertSame('la pregunta ya no aplica', $this->almacen()->load('j')?->endedBecause, 'el motivo queda en el stream');
+    }
+
+    /** Sin motivo NO se descarta: un final sin causa es un final que nadie puede leer mañana. */
+    public function testDiscardingWithoutAReasonIsRefused(): void
+    {
+        $this->almacen()->start('j', 'la tarea');
+
+        $r = $this->llamar('agent:discard', ['session' => 'j', 'because' => '   ']);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('because', (string) $r['error']);
+        self::assertNull($this->almacen()->load('j')?->endedBecause, 'la sesión sigue viva');
+    }
+
+    /** Y una sesión que no existe se dice, en vez de cerrar un id inventado en silencio. */
+    public function testDiscardingAMissingSessionSaysSo(): void
+    {
+        $r = $this->llamar('agent:discard', ['session' => 'no-existe', 'because' => 'x']);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('no existe la sesión', (string) $r['error']);
+    }
 }

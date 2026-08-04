@@ -1407,7 +1407,10 @@ class AgentOperations implements CommandProvider
         // `surfaces`, porque un cliente MCP con un humano detrás contesta legítimamente por esa
         // superficie: la regla no es «answer no sale por MCP», es «answer no es una herramienta de
         // la sesión que espera la respuesta».
-        $adjudican = ['agent:answer', 'agent:mode'];
+        // `agent:discard` entra a esta lista el día que nace, y no después: cierra una sesión, y un
+        // padre que pudiera cerrar a su hijo pausado haría desaparecer la pregunta que el humano tenía
+        // que ver. No otorga nada — vuelve invisible lo que existía para ser visto.
+        $adjudican = ['agent:answer', 'agent:mode', 'agent:discard'];
         $todas = array_values(array_filter(
             $todas,
             static fn ($op): bool => !\in_array($op->name, $adjudican, true),
