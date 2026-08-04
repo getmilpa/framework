@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/getmilpa/framework/compare/v0.16.0...v0.17.0) (2026-08-04)
+
+
+### Features
+
+* **agent:** delegación completa — spawn, resume, obligaciones y prohibiciones ejecutadas ([0b2d2db](https://github.com/getmilpa/framework/commit/0b2d2db5860f5e64258bf3a2631919d3df3d9376))
+
+
+### Bug Fixes
+
+* **test:** la cobertura dejó de depender de lo que quedó en el disco ([f05a0ea](https://github.com/getmilpa/framework/commit/f05a0ea9771d431582d23e5a90f58df767c6362f))
+
 ## [0.16.0](https://github.com/getmilpa/framework/compare/v0.15.0...v0.16.0) (2026-08-03)
 
 
