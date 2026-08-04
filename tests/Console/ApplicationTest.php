@@ -392,4 +392,49 @@ final class ApplicationTest extends TestCase
         self::assertNull($almacen->load($j . '.sub-real')?->question, 'el hijo dejó de esperar');
         self::assertNull($almacen->load($j)?->question, 'y la del padre no se tocó');
     }
+
+    /**
+     * REPARAR TAMPOCO PUEDE NECESITAR QUE ARRANQUE — y esta prueba lo fija donde importa.
+     *
+     * La raíz que recibe NO tiene kernel: sólo un `config/plugins.php` y ningún `config/boot.php`, así
+     * que cualquier operación moriría al despachar. `repair` contesta igual, porque va antes — la
+     * misma decisión que `doctor` ya tenía y por la misma razón.
+     *
+     * Sin esto, la herramienta que repara no correría sobre la app que necesita reparación: medido el
+     * 2026-08-04 en un host con una capacidad requerida sin proveedor, `coa:doctor`, `coa repair` y
+     * cualquier otra operación morían con el mismo `[Initialization Error]`.
+     */
+    public function testRepairAnswersOnARootThatCannotBoot(): void
+    {
+        $raiz = sys_get_temp_dir() . '/milpa-sin-kernel-' . bin2hex(random_bytes(4));
+        mkdir($raiz . '/config', 0o775, true);
+        file_put_contents($raiz . '/config/plugins.php', '<?php return [];');
+
+        self::assertFileDoesNotExist($raiz . '/config/boot.php', 'la raíz no puede arrancar, y ése es el punto');
+
+        $app = new Application($raiz);
+
+        ob_start();
+        $codigo = $app->run(['coa', 'repair', 'milpa/mcp-server']);
+        $texto = (string) ob_get_clean();
+
+        $this->borrar($raiz);
+
+        self::assertSame(1, $codigo, 'no repara lo que el diagnóstico no pidió');
+        self::assertStringContainsString('no recomienda instalar nada', $texto, 'contestó, no se cayó');
+        self::assertStringNotContainsString('Initialization Error', $texto);
+    }
+
+    /** Sin paquete dice cómo se usa, en vez de reparar lo primero que encuentre. */
+    public function testRepairWithoutAPackageSaysHowItIsUsed(): void
+    {
+        $app = new Application(\dirname(__DIR__, 2));
+
+        ob_start();
+        $codigo = $app->run(['coa', 'repair']);
+        $texto = (string) ob_get_clean();
+
+        self::assertSame(1, $codigo);
+        self::assertStringContainsString('uso: coa repair', $texto);
+    }
 }

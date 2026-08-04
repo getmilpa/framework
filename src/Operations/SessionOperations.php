@@ -160,6 +160,23 @@ final class SessionOperations implements CommandProvider
                 surfaces: ['cli', 'tui', 'mcp', 'http'],
             ),
             new Operation(
+                name: 'agent:board',
+                description: 'The work of one session as four columns, derived from its stream',
+                handler: fn (array $input): array => $this->tablero($input),
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'session' => ['type' => 'string', 'description' => 'Identificador de la sesión'],
+                    ],
+                    'required' => ['session'],
+                ],
+                mutating: false,
+                // POR HTTP TAMBIÉN, como `agent:timeline` y por lo mismo: leer lo que ya pasó no
+                // autoriza nada, y es justo lo que un navegador necesita para pintar el trabajo en
+                // vivo. Lo que decide —contestar, aprobar, cambiar el modo— sigue fuera de la web.
+                surfaces: ['cli', 'tui', 'mcp', 'http'],
+            ),
+            new Operation(
                 name: 'agent:discard',
                 description: 'Discard a session: it stops waiting and nothing can resume it',
                 handler: fn (array $input, ?InvocationContext $ctx = null): array => $this->descartar($input, $ctx),
@@ -178,6 +195,81 @@ final class SessionOperations implements CommandProvider
                 surfaces: ['cli', 'tui', 'mcp', 'http'],
             ),
         ];
+    }
+
+    /**
+     * El tablero de una sesión: cuatro columnas, TODAS derivadas del stream (P19.5).
+     *
+     * ── LA PROPIEDAD QUE NO SE PUEDE PERDER ─────────────────────────────────────────────────────
+     *
+     * **El tablero no tiene estado.** Lo que se ve es el fold del stream, releído en cada llamada. En
+     * el momento en que esto guardara su propia copia de en qué columna va una tarjeta habría dos
+     * sitios que contestan «¿en qué va esto?», y divergirían — la única pregunta sería cuándo. Es la
+     * misma regla que el tablero de `milpa/devtools` ya tenía escrita: *nadie mueve nada, las columnas
+     * salen de los resultados, así que el tablero no puede mentir.*
+     *
+     * Por eso esto es una PROYECCIÓN y no un almacén, y por eso se pudo escribir antes que la página:
+     * una página bonita sobre un fold equivocado enseña una mentira convincente.
+     *
+     * ── LAS COLUMNAS SON EL ENUM, NO UNA LISTA DE AQUÍ ──────────────────────────────────────────
+     *
+     * Salen de {@see TodoStatus}, así que un estado nuevo aparece como columna sin tocar este archivo
+     * — y, más importante, no puede existir un estado que el tablero no sepa pintar. Una lista escrita
+     * a mano aquí sería el segundo lugar que decide cuántas columnas hay.
+     *
+     * ── LO QUE NO HACE ──────────────────────────────────────────────────────────────────────────
+     *
+     * No aprueba nada. Aprobar es consentir un efecto y tiene su propia forma —`PolicyDecision`, con
+     * el `Principal` de quien consiente— y [Q-P19-B](settlement-q-p19b.md) midió que mover una tarjeta
+     * y consentir un efecto **no son el mismo sistema**. Un tablero que hiciera las dos con el mismo
+     * gesto perdería la distinción que vuelve auditable esto: mover una tarjeta no puede consentir un
+     * `plugins.disable`.
+     *
+     * @param array<string, mixed> $input
+     *
+     * @return array{ok: bool, session?: string, columns?: array<string, list<array<string, mixed>>>, pending_question?: string, error?: string}
+     */
+    private function tablero(array $input): array
+    {
+        [$almacen, $id, $error] = $this->target($input);
+        if ($error !== null || $almacen === null) {
+            return $error ?? ['ok' => false, 'error' => 'esta app no tiene dónde guardar sesiones'];
+        }
+
+        $sesion = $almacen->load($id);
+        if ($sesion === null) {
+            return ['ok' => false, 'error' => "no existe la sesión «{$id}»"];
+        }
+
+        $columnas = [];
+        foreach (TodoStatus::cases() as $estado) {
+            $columnas[$estado->value] = [];
+        }
+
+        foreach ($sesion->todos as $todo) {
+            $columnas[$todo->status->value][] = [
+                'id' => $todo->id,
+                'text' => $todo->text,
+                // LA VERSIÓN VIAJA. Es lo que deja a quien pinta saber si una tarjeta se movió o si
+                // sólo se volvió a leer, sin comparar textos.
+                'version' => $todo->version,
+                'origin' => $todo->origin?->value,
+                // CUÁNTAS MUTACIONES PASARON DESPUÉS de tocar esta tarjeta. `0` es una tarjeta al día;
+                // un número alto es el sistema diciendo «cambiaron siete cosas y esto no se movió ni
+                // se cerró». No afirma que esté mal: afirma que no se explicó.
+                'unexplained' => max(0, $sesion->mutations - $todo->mutationsAt),
+            ];
+        }
+
+        $salida = ['ok' => true, 'session' => $id, 'columns' => $columnas];
+
+        // LA PREGUNTA ABIERTA VA EN EL TABLERO, porque es trabajo detenido esperando a un humano — y
+        // un tablero que no la muestra deja al agente parado sin que nadie lo vea.
+        if ($sesion->question !== null) {
+            $salida['pending_question'] = $sesion->question->question;
+        }
+
+        return $salida;
     }
 
     /**

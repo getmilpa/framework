@@ -259,7 +259,14 @@ final class AgentScreenTest extends TestCase
         $texto = $this->pantallaDe($sesion, static fn (string $q): array => ['ok' => true])->render();
 
         self::assertStringContainsString('¿autorizas make?', $texto);
-        self::assertStringContainsString('sí · no', $texto, 'las opciones');
+        // LAS TRES AFORDANCIAS, no dos palabras para teclear. Antes decía «sí · no» y había que
+        // ESCRIBIR una de las dos: una respuesta de dos letras que se puede equivocar es fricción que
+        // nadie debería pagar por autorizar algo. Ahora se eligen con flechas y la tercera —escribir
+        // la tuya— es para corregir o dar contexto, que es la que no se puede reducir a un botón.
+        self::assertStringContainsString('▸ sí', $texto, 'la primera viene elegida');
+        self::assertStringContainsString('no', $texto);
+        self::assertStringContainsString('escribir la mía', $texto, 'y la tercera existe');
+        self::assertStringContainsString('← → elegir', $texto, 'con cómo se usa');
         self::assertStringContainsString('what', $texto, 'y sobre qué');
         self::assertStringContainsString('[Enter] contestar', $texto, 'la ayuda cambia con la situación');
     }
@@ -299,8 +306,18 @@ final class AgentScreenTest extends TestCase
         $pantalla->press('enter');
 
         self::assertSame('sí', $contestado);
-        self::assertSame(0, $alAgente, 'no se le mandó nada al agente');
         self::assertStringContainsString('autorizado: make', $pantalla->conversation()[1]['texto']);
+
+        // Y SIGUE SOLO. Esta prueba afirmaba lo contrario —«no se le mandó nada al agente»— y lo
+        // afirmaba correctamente sobre el comportamiento de entonces: contestar dejaba el hint
+        // «pídeme que siga» y se quedaba esperando. Rod lo reportó desde el uso real y tiene razón:
+        // ya dijiste que sí, pedirte que lo pidas otra vez es un paso de más, y deja al agente parado
+        // con la autorización en la mano.
+        //
+        // Lo que NO cambió es `agent:answer`: contestar y correr siguen siendo dos hechos distintos,
+        // y otras superficies necesitan el primero sin el segundo. Cambió esta pantalla, que sí sabe
+        // qué venía después.
+        self::assertSame(1, $alAgente, 'contestar continúa el flujo, no lo deja esperando');
     }
 
     /** Sin sesión, la pantalla es la de antes: la memoria es opcional y no puede romper lo que servía. */
@@ -1068,5 +1085,63 @@ final class AgentScreenTest extends TestCase
         $pantalla->press('enter');
 
         self::assertSame('sí', $contestadoPropio);
+    }
+
+    /**
+     * LAS FLECHAS ELIGEN Y ENTER ACTÚA, sin teclear una palabra.
+     *
+     * Antes había que ESCRIBIR «sí»: una respuesta de dos letras que se puede equivocar es fricción
+     * que nadie debería pagar por autorizar algo.
+     */
+    public function testArrowsChooseTheAnswerAndEnterSendsIt(): void
+    {
+        $sesion = new Session(
+            id: 's1',
+            goal: 'x',
+            question: new PendingQuestion('perm:make', '¿autorizas make?', ['sí', 'no']),
+        );
+
+        $contestado = null;
+        $pantalla = $this->pantallaDe(
+            $sesion,
+            static fn (string $q): array => ['ok' => true],
+            static function (string $r) use (&$contestado): array {
+                $contestado = $r;
+
+                return ['ok' => true];
+            },
+        );
+
+        $pantalla->press('right');
+        $pantalla->press('enter');
+
+        self::assertSame('no', $contestado, 'la segunda afordancia contesta «no» sin teclearlo');
+    }
+
+    /** Y con la tercera elegida y nada escrito, Enter no manda una respuesta vacía. */
+    public function testTheThirdAffordanceWithNothingTypedSendsNothing(): void
+    {
+        $sesion = new Session(
+            id: 's1',
+            goal: 'x',
+            question: new PendingQuestion('perm:make', '¿autorizas make?', ['sí', 'no']),
+        );
+
+        $contestado = null;
+        $pantalla = $this->pantallaDe(
+            $sesion,
+            static fn (string $q): array => ['ok' => true],
+            static function (string $r) use (&$contestado): array {
+                $contestado = $r;
+
+                return ['ok' => true];
+            },
+        );
+
+        $pantalla->press('right');
+        $pantalla->press('right');
+        $pantalla->press('enter');
+
+        self::assertNull($contestado, 'una respuesta vacía no es una respuesta');
     }
 }

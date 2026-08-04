@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace App\Operations;
 
 use App\Support\Capabilities;
+use Milpa\DevTools\Doctor\Repair;
 use Milpa\Command\CommandProvider;
 use Milpa\Command\Operation;
 
@@ -98,6 +99,45 @@ final readonly class CapabilityOperations implements CommandProvider
                 // for a signature here would make it the kind of prompt people approve without
                 // reading, which is how the ones that mattered stop being read.
                 mutating: true,
+                // EL OBJETIVO LO NOMBRA EL HUMANO — y esto lo puso una MEDICIÓN, no una revisión.
+                //
+                // Q-P20-J (2026-08-04): en el brazo donde la petición NO nombraba el paquete, el
+                // agente no llamó `repair` ni una vez —su compuerta sostuvo 0/8— y **instaló igual**,
+                // ocho veces, por esta puerta. `capabilities:enable` cambia la app exactamente igual
+                // que `repair` y no tenía contrato de intención, así que la restricción existía y no
+                // era exhaustiva: se cerró una puerta y quedó la de junto.
+                //
+                // Una compuerta de autoridad que se puede rodear no es una compuerta; es una
+                // sugerencia con mejor prensa. Lo encontró correr el sistema, no leerlo: la prueba
+                // unitaria de `repair` seguía en verde mientras esto pasaba.
+                namedTarget: 'capability',
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
+            new Operation(
+                name: 'repair',
+                description: 'Apply one repair the diagnosis recommends, by name — and verify it landed',
+                handler: fn (array $input): array => $this->repair($input),
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'package' => [
+                            'type' => 'string',
+                            'description' => 'The package `coa doctor` recommends installing, exactly as it names it',
+                        ],
+                        'dry_run' => [
+                            'type' => 'boolean',
+                            'description' => 'Print the exact command instead of running it',
+                        ],
+                    ],
+                    'required' => ['package'],
+                ],
+                mutating: true,
+                // EL OBJETIVO LO NOMBRA EL HUMANO (ADR-0044). Reparar es la operación con más
+                // tentación de decidir sola —el diagnóstico ya «sabe» qué hacer— y por eso es donde
+                // más importa que no lo haga: instalar algo que nadie pidió es cambiar la app por una
+                // conclusión propia. Si la petición no nombra el paquete, la llamada se detiene y
+                // escala.
+                namedTarget: 'package',
                 surfaces: ['cli', 'tui', 'mcp'],
             ),
         ];
@@ -113,6 +153,41 @@ final readonly class CapabilityOperations implements CommandProvider
         return Capabilities::install(
             \is_string($input['capability'] ?? null) ? $input['capability'] : '',
             dryRun: ($input['dry_run'] ?? false) === true,
+        );
+    }
+
+    /**
+     * Aplicar una reparación que el diagnóstico ya recomendó (P17.6).
+     *
+     * LA DECISIÓN NO VIVE AQUÍ. Vive en {@see Repair}, que no necesita el kernel — porque el caso que
+     * esto atiende es justamente el de una app que no arranca, y una operación sin kernel no corre.
+     * Esta es la superficie del agente sobre esa misma decisión; `coa repair` es la otra. Dos
+     * implementaciones de «¿procede reparar esto?» discreparían el día que importa.
+     *
+     * @param array<string, mixed>                                  $input
+     * @param null|list<string>                                     $recomendados costura de prueba, la misma que en {@see Repair}
+     * @param null|callable(string): array{0: int, 1: list<string>} $corredor     costura de prueba
+     *
+     * @return array<string, mixed>
+     */
+    private function repair(array $input, ?array $recomendados = null, ?callable $corredor = null): array
+    {
+        // MISMA GUARDA QUE EN LA CLI: las dev tools son opt-in, y un `Class not found` es un fatal
+        // donde tendría que haber una instrucción.
+        if (!class_exists(Repair::class)) {
+            return [
+                'ok' => false,
+                'error' => 'repair vive en las dev tools y esta app no las tiene',
+                'hint' => 'composer require milpa/devtools',
+            ];
+        }
+
+        return Repair::apply(
+            \dirname(__DIR__, 2),
+            \is_string($input['package'] ?? null) ? $input['package'] : '',
+            ($input['dry_run'] ?? false) === true,
+            $recomendados,
+            $corredor,
         );
     }
 }

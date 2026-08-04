@@ -43,8 +43,12 @@ use Milpa\Live\ValueObjects\Tui\TuiNode;
  * ── ES SÍNCRONA, Y SE DICE ──────────────────────────────────────────────────────────────────────
  *
  * Mientras el agente piensa, la terminal no repinta: PHP no tiene hilos aquí y este bucle es de un
- * solo camino. Por eso el frame ANTES de preguntar dice «pensando…», y no un spinner que no gira:
- * una interfaz que finge actividad que no ocurre entrena a no creerle.
+ * solo camino. Por eso el frame ANTES de preguntar dice «pensando…», y no un spinner con reloj
+ * propio: una interfaz que finge actividad que no ocurre entrena a no creerle.
+ *
+ * Lo que SÍ ocurre es que los hechos llegan por el broadcaster mientras el agente trabaja, y el
+ * indicador avanza un cuadro con cada uno. **Cada giro es un evento**: si se queda quieto no es que
+ * la pantalla se colgó, es que todavía no ha pasado nada — y eso también es información.
  */
 final class AgentScreen implements SurfaceBroadcaster
 {
@@ -55,6 +59,19 @@ final class AgentScreen implements SurfaceBroadcaster
      * el modelo pueda escribir — un spinner que se confunde con el contenido deja de informar.
      */
     private const PULSO = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+    /**
+     * Cuál de las tres afordancias está elegida cuando hay una pregunta abierta.
+     *
+     * `0` y `1` son las respuestas de una palabra que la operación ya declara; `2` es escribir la
+     * tuya. Antes había que TECLEAR «sí» —y una respuesta de dos letras que se puede equivocar es una
+     * fricción que ningún humano debería pagar por autorizar algo—; ahora son dos teclas y Enter.
+     *
+     * No se usan `s` y `n` como atajo directo a propósito: chocarían con escribir una respuesta que
+     * empiece con esas letras, y «sí» empieza con `s`. Las flechas eligen, escribir se va solo a la
+     * tercera.
+     */
+    private int $opcionPregunta = 0;
 
     private readonly RetainedTuiLoop $loop;
 
@@ -290,6 +307,23 @@ final class AgentScreen implements SurfaceBroadcaster
     {
         $this->actividad = $que;
 
+        // EL PULSO AVANZA CON EL HECHO, no con un reloj — y ésa es toda la diferencia.
+        //
+        // El indicador se quedaba clavado en el mismo cuadro: `anunciar()` repintaba y nadie movía el
+        // contador, así que la pantalla enseñaba un spinner congelado y eso se lee como «se colgó».
+        // Rod lo reportó desde el uso real.
+        //
+        // La tentación era animarlo con un temporizador, y este archivo ya explica por qué no: la
+        // vuelta es SÍNCRONA —PHP no tiene hilos aquí— así que un spinner con reloj propio giraría
+        // igual con el agente trabajando que con el proceso muerto. *Una interfaz que finge actividad
+        // que no ocurre entrena a no creerle.*
+        //
+        // Avanzarlo aquí conserva esa honestidad y arregla el síntoma: `anunciar()` sólo se llama
+        // cuando llegó un hecho del stream —una herramienta que corrió, un cambio de estado—, así que
+        // **cada giro es un evento**. Si no gira, no es que se colgó la pantalla: es que no ha pasado
+        // nada, y eso también es información.
+        ++$this->pulso;
+
         if ($this->repintar !== null) {
             ($this->repintar)();
         }
@@ -337,6 +371,81 @@ final class AgentScreen implements SurfaceBroadcaster
     public function conversation(): array
     {
         return $this->conversacion;
+    }
+
+    /**
+     * Sobre QUÉ se está pidiendo permiso, en castellano y no en JSON.
+     *
+     * `SessionPolicy` guarda los argumentos con `json_encode` porque es un dato y ahí tiene que ser
+     * exacto — el stream lo relee, y una frase no se puede reproyectar. Pero pedirle a un humano que
+     * autorice algo enseñándole `{"name":"HelloPlugin"}` le cobra el trabajo de parsear justo en el
+     * momento en que tiene que decidir. **Pintar el dato es trabajo de la superficie**, que es la
+     * misma razón por la que el resultado crudo de las herramientas dejó de anexarse a la respuesta.
+     *
+     * Si no parsea, se enseña tal cual: inventar una frase sobre algo que no se entendió sería peor
+     * que el JSON, porque el JSON al menos es cierto.
+     */
+    private function sobreQue(?string $why): string
+    {
+        if ($why === null || $why === '') {
+            return 'sin argumentos';
+        }
+
+        $datos = json_decode($why, true);
+        if (!\is_array($datos) || $datos === []) {
+            return $why;
+        }
+
+        $partes = [];
+        foreach ($datos as $clave => $valor) {
+            $partes[] = \is_scalar($valor) || $valor === null
+                ? $clave . ' ' . var_export($valor, true)
+                // Un valor compuesto se deja en JSON: aplanarlo perdería la estructura sobre la que
+                // justamente se está autorizando.
+                : $clave . ' ' . (string) json_encode($valor, \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES);
+        }
+
+        return implode(' · ', $partes);
+    }
+
+    /**
+     * Las tres afordancias, con la elegida marcada — dos respuestas de una palabra y la tuya.
+     *
+     * Las dos primeras salen de lo que la operación DECLARA en su pregunta, no de constantes de esta
+     * pantalla: una pregunta que ofrezca «continuar/abortar» pinta esas, no «sí/no». Si no declara
+     * ninguna, quedan las dos de siempre — una pregunta sin opciones sigue siendo contestable.
+     *
+     * @param list<string> $opciones
+     */
+    private function afordancias(array $opciones): string
+    {
+        $etiquetas = [$opciones[0] ?? 'sí', $opciones[1] ?? 'no', 'escribir la mía'];
+        $pintadas = [];
+        foreach ($etiquetas as $i => $etiqueta) {
+            $pintadas[] = $i === $this->opcionPregunta ? "▸ {$etiqueta}" : "  {$etiqueta}";
+        }
+
+        return implode('   ', $pintadas) . '   · ← → elegir · Enter';
+    }
+
+    /**
+     * Las opciones de la pregunta abierta —propia o de un sub-agente—, o `null` si no hay ninguna.
+     *
+     * Una sola fuente para las teclas y para el pintado: dos lecturas de «¿hay pregunta?» acabarían
+     * pintando botones que no responden, o respondiendo botones que no se ven.
+     *
+     * @return list<string>|null
+     */
+    private function preguntaAbierta(): ?array
+    {
+        $propia = $this->sesionActual()?->question;
+        if ($propia !== null) {
+            return $propia->options;
+        }
+
+        $hijo = $this->preguntaDeHijoPendiente();
+
+        return $hijo === null ? null : $hijo['options'];
     }
 
     private function handleKey(string $key, RetainedTuiLoop $loop): bool
@@ -402,6 +511,42 @@ final class AgentScreen implements SurfaceBroadcaster
             return true;
         }
 
+        // ── CON UNA PREGUNTA ABIERTA, LAS FLECHAS ELIGEN Y ENTER ACTÚA ──────────────────────────
+        //
+        // Tres afordancias, que son las tres cosas que un humano quiere hacer ante una pregunta del
+        // agente: decir que sí, decir que no, o contestar otra cosa —corregir, dar contexto, poner
+        // una condición—. Antes las tres pasaban por teclear, y las dos primeras no tienen por qué.
+        $abierta = $this->preguntaAbierta();
+        if ($abierta !== null) {
+            if ($key === 'left' || $key === 'right') {
+                $this->opcionPregunta = $key === 'left'
+                    ? max(0, $this->opcionPregunta - 1)
+                    : min(2, $this->opcionPregunta + 1);
+                $this->loop->repintarTodo();
+
+                return true;
+            }
+
+            if ($key === 'enter') {
+                $eleccion = match ($this->opcionPregunta) {
+                    0 => $abierta[0] ?? 'sí',
+                    1 => $abierta[1] ?? 'no',
+                    // La tuya: si no escribiste nada, no se manda una cadena vacía como respuesta.
+                    default => trim($this->entrada),
+                };
+
+                if ($eleccion === '') {
+                    return true;
+                }
+
+                $this->entrada = $eleccion;
+                $this->opcionPregunta = 0;
+                $this->preguntar();
+
+                return true;
+            }
+        }
+
         if ($key === 'enter') {
             $this->preguntar();
 
@@ -419,6 +564,12 @@ final class AgentScreen implements SurfaceBroadcaster
         $crudo = $loop->lastRawKey();
         if (mb_strlen($crudo) === 1 && preg_match('/^[[:print:]]$/u', $crudo) === 1) {
             $this->entrada .= $crudo;
+            // ESCRIBIR ES ELEGIR LA TERCERA. Nadie teclea una respuesta para después tener que
+            // caminar hasta la opción de escribirla.
+            if ($this->preguntaAbierta() !== null) {
+                $this->opcionPregunta = 2;
+            }
+            $this->loop->repintarTodo();
 
             return true;
         }
@@ -456,14 +607,34 @@ final class AgentScreen implements SurfaceBroadcaster
         $sesion = $this->sesionActual();
         if ($sesion?->question !== null && $this->contestar !== null) {
             $eco = ($this->contestar)($pregunta);
+
+            if (!$eco['ok']) {
+                $this->conversacion[] = ['quien' => 'agente', 'voz' => 'sistema', 'texto' => '✗ ' . ($eco['error'] ?? '')];
+
+                return;
+            }
+
             $this->conversacion[] = [
                 'quien' => 'agente',
                 'voz' => 'sistema',
-                'texto' => ($eco['ok'])
-                    ? '✓ contestado' . (($eco['granted'] ?? null) !== null ? ' · autorizado: ' . $eco['granted'] : '')
-                        . ' — pídeme que siga'
-                    : '✗ ' . ($eco['error'] ?? ''),
+                'texto' => '✓ contestado' . (($eco['granted'] ?? null) !== null ? ' · autorizado: ' . $eco['granted'] : ''),
             ];
+
+            // ── Y SIGUE SOLO, QUE ES LO QUE CONTESTAR SIGNIFICA ─────────────────────────────────
+            //
+            // Antes decía «pídeme que siga» y se quedaba esperando. Rod lo reportó desde el uso real:
+            // ya dijiste que sí, pedirte que lo pidas otra vez es un paso de más — y peor, deja al
+            // agente parado con la autorización en la mano.
+            //
+            // La operación `agent:answer` NO retoma el bucle, y así debe seguir: contestar y correr son
+            // dos hechos distintos, y otras superficies necesitan el primero sin el segundo. Lo que
+            // cambia es ESTA pantalla, que sí sabe qué venía después — es la misma distinción de
+            // siempre entre el primitivo y la superficie que lo usa.
+            //
+            // Se retoma con el objetivo de la sesión y no con lo que acabas de teclear: «sí» no es una
+            // instrucción, es un consentimiento, y mandarlo como prompt le pediría al agente que
+            // interprete un monosílabo.
+            $this->correrVuelta($sesion->goal !== '' ? $sesion->goal : 'continúa con lo que estabas haciendo');
 
             return;
         }
@@ -492,6 +663,18 @@ final class AgentScreen implements SurfaceBroadcaster
             return;
         }
 
+        $this->correrVuelta($pregunta);
+    }
+
+    /**
+     * Correr una vuelta del agente y pintar lo que devuelva.
+     *
+     * Vive aparte desde que contestar continúa el flujo solo: la pantalla necesita el mismo camino
+     * desde dos lugares —lo que tecleas y lo que sigue después de autorizar— y dos copias de «correr
+     * y pintar» divergirían en el primer arreglo que se le hiciera a una.
+     */
+    private function correrVuelta(string $pregunta): void
+    {
         // UN SOLO ESTADO, Y ES EL QUE SE PUEDE SOSTENER.
         //
         // Lo que hace falta de verdad son cuatro —enviando, esperando al modelo, corriendo tal
@@ -961,7 +1144,21 @@ final class AgentScreen implements SurfaceBroadcaster
             foreach (explode("\n", $turno['texto']) as $j => $linea) {
                 $lineas[] = [
                     "turno:{$i}:{$j}",
-                    ($j === 0 ? ($voz === 'humano' ? '› ' : '  ') : '  ') . $linea,
+                    // EL MARCADOR DICE DE QUIÉN ES LA LÍNEA (spec-lenguaje-visual-tui.md).
+                    //
+                    // `›` lo tuyo, `■` lo que dijo el SISTEMA, y el modelo **sin marcador**: lo que
+                    // se marca es lo que NO es prosa suya. Así, cualquier cosa que escriba —incluida
+                    // una imitación perfecta de una pregunta de permiso, que es lo que hizo el
+                    // 2026-08-04— sale sin `■`, y no puede fabricarlo porque el marcador no está en
+                    // su texto: lo pone esta pantalla según de dónde vino el turno.
+                    //
+                    // Va en la primera línea nomás: repetirlo en cada renglón de un párrafo haría
+                    // ruido y el bloque ya se lee como uno solo por la sangría.
+                    ($j === 0 ? match ($voz) {
+                        'humano' => '› ',
+                        'sistema' => '■ ',
+                        default => '  ',
+                    } : '  ') . $linea,
                     $voz,
                 ];
             }
@@ -989,7 +1186,15 @@ final class AgentScreen implements SurfaceBroadcaster
             $hijos[] = $voz === 'agente'
                 // `markdown` y no `text`: el modelo escribe con negritas, listas y bloques de
                 // código, y pintarlo plano descarta información que él sí puso.
-                ? new TuiNode($id, 'markdown', props: ['content' => $texto, 'wrap' => false])
+                //
+                // Y ENVUELVE. Iba en `wrap => false` sin motivo escrito, y el renderer trunca cada
+                // línea al ancho: una respuesta larga se cortaba a media frase —«…lo que significa que
+                // ya no se»— y lo que el agente dijo después no existía para quien miraba. Rod lo
+                // reportó desde el uso real; visto en tmux, es exactamente eso.
+                //
+                // Una pantalla que corta sin decirlo es peor que una que no cabe: no hay puntos
+                // suspensivos, no hay barra, nada distingue «terminó ahí» de «no cupo».
+                ? new TuiNode($id, 'markdown', props: ['content' => $texto, 'wrap' => true])
                 : new TuiNode($id, 'text', props: ['text' => $texto]);
         }
 
@@ -999,26 +1204,26 @@ final class AgentScreen implements SurfaceBroadcaster
         // aviso al costado.
         $pendiente = $sesion?->question;
         if ($pendiente !== null) {
-            $hijos[] = new TuiNode('pregunta', 'text', props: ['text' => '⏸ ' . $pendiente->question]);
+            $hijos[] = new TuiNode('pregunta', 'text', props: ['text' => '■ ⏸ ' . $pendiente->question]);
             if ($pendiente->why !== null) {
-                $hijos[] = new TuiNode('pregunta-por', 'text', props: ['text' => '  con: ' . $pendiente->why]);
+                $hijos[] = new TuiNode('pregunta-por', 'text', props: ['text' => '  con ' . $this->sobreQue($pendiente->why)]);
             }
-            if ($pendiente->options !== []) {
-                $hijos[] = new TuiNode('pregunta-op', 'text', props: [
-                    'text' => '  ' . implode(' · ', $pendiente->options),
-                ]);
-            }
+            $hijos[] = new TuiNode('pregunta-op', 'text', props: [
+                'text' => '  ' . $this->afordancias($pendiente->options),
+            ]);
         } elseif ($deHijo !== null) {
             // La pausa del sub-agente ocupa el mismo lugar que ocuparía la propia: es lo que hay que
             // hacer. El id va adentro para que quien conteste sepa A QUIÉN le está contestando.
             $hijos[] = new TuiNode('pregunta', 'text', props: [
-                'text' => '⏸ (sub-agente ' . $deHijo['session'] . ') ' . $deHijo['question'],
+                // `└` porque es trabajo de OTRA sesión, con su propio techo de autonomía: la esquina
+                // dice subordinación sin explicarla, y confundir al hijo con el principal ya costó un
+                // defecto —`--continue` abría la sesión de un hijo y quedabas hablando con el hijo de
+                // nadie—.
+                'text' => '└ ⏸ (sub-agente ' . $deHijo['session'] . ') ' . $deHijo['question'],
             ]);
-            if ($deHijo['options'] !== []) {
-                $hijos[] = new TuiNode('pregunta-op', 'text', props: [
-                    'text' => '  ' . implode(' · ', $deHijo['options']),
-                ]);
-            }
+            $hijos[] = new TuiNode('pregunta-op', 'text', props: [
+                            'text' => '  ' . $this->afordancias($deHijo['options']),
+                        ]);
         }
 
         // LA ACTIVIDAD SUBE A SU PROPIA BARRA, y el renglón de entrada deja de prestarse.

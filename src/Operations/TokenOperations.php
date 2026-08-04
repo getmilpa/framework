@@ -84,6 +84,10 @@ final readonly class TokenOperations implements CommandProvider
                 // en la terminal de la app, que es el mismo poder. Una compuerta aquí sería trámite.
                 mutating: true,
                 surfaces: ['cli'],
+
+                // El objetivo lo nombra el humano (ADR-0044), y lo puso una medición: Q-P20-J midió que
+                // una puerta que muta sin contrato se usa 8/8 veces sobre un objeto que nadie nombró.
+                namedTarget: 'actor',
             ),
             new Operation(
                 name: 'token.revoke',
@@ -96,6 +100,10 @@ final readonly class TokenOperations implements CommandProvider
                 ],
                 mutating: true,
                 surfaces: ['cli'],
+
+                // El objetivo lo nombra el humano (ADR-0044), y lo puso una medición: Q-P20-J midió que
+                // una puerta que muta sin contrato se usa 8/8 veces sobre un objeto que nadie nombró.
+                namedTarget: 'id',
             ),
         ];
     }

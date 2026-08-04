@@ -16,6 +16,7 @@ namespace App\Console;
 
 use App\Agent\SurfaceBroadcaster;
 use App\Support\Capabilities;
+use Milpa\DevTools\Doctor\Repair;
 use Milpa\Command\CommandProvider;
 use Milpa\Command\Operation;
 use Milpa\Console\CliProjector;
@@ -103,6 +104,20 @@ final class Application
             if ($sesion === null) {
                 continue;
             }
+            // UNA HIJA NO ES UNA CONVERSACIÓN QUE ALGUIEN TUVO, y por eso no se retoma.
+            //
+            // Visto manejando el TUI el 2026-08-04: `coa chat --continue` abrió
+            // `jornada-f73aba.sub-real` —una sesión de sub-agente que dejó una prueba unitaria— y el
+            // humano se encontró conversando con el hijo de nadie. La última sesión del almacén no es
+            // la última CHARLA: los hijos escriben en el mismo stream y suelen ser los más recientes,
+            // porque nacen a mitad de una vuelta.
+            //
+            // Un hijo se retoma con `agent_resume`, que es otro verbo y otra autoridad. Aquí se busca
+            // con quién estabas hablando tú.
+            if ($sesion->parentId !== null) {
+                continue;
+            }
+
             $seq = $sesion->turns === [] ? 0 : (int) ($sesion->turns[\count($sesion->turns) - 1]['seq'] ?? 0);
             if ($seq >= $masReciente) {
                 $masReciente = $seq;
@@ -237,6 +252,37 @@ final class Application
 
         if ($comando === 'doctor') {
             return $this->doctor();
+        }
+
+        // ── REPARAR TAMPOCO PUEDE NECESITAR QUE ARRANQUE ────────────────────────────────────────
+        //
+        // `repair` existe también como operación, y ahí la ve el agente. Pero una operación se
+        // despacha con el kernel arriba, y el caso que esta reparación atiende es justo aquel en que
+        // el kernel NO levanta: medido el 2026-08-04, con una capacidad requerida sin proveedor
+        // mueren `coa:doctor`, `coa repair` y cualquier otra operación, las tres con el mismo
+        // `[Initialization Error]`.
+        //
+        // Es el argumento que `doctor` ya había ganado aquí arriba, un paso más adelante: si la
+        // herramienta que explica por qué algo no arranca no puede necesitar que arranque, la que lo
+        // arregla tampoco.
+        //
+        // La DECISIÓN es la misma en las dos superficies —`Milpa\DevTools\Doctor\Repair`, junto al
+        // doctor que la recomienda— porque dos versiones de
+        // «¿procede reparar esto?» discreparían el día que importa: el CLI diciendo que sí y el
+        // agente que no, sobre la misma app.
+        // Y CON SU GUARDA, como `doctor` tres líneas arriba: la reparación vive en las dev tools, que
+        // son OPT-IN. Sin ellas esto reventaba con un `Class not found` — un fatal en vez de una
+        // instrucción, que es el peor modo de decir «te falta algo». Lo cazó la ceremonia de release
+        // corriendo la suite contra el paquete instalado desde Packagist, no una prueba local.
+        if ($comando === 'repair' && !Capabilities::installed('devtools')) {
+            return $this->faltaCapability(
+                '`repair` lives in the dev tools, and this app does not have them yet.',
+                'composer require milpa/devtools',
+            );
+        }
+
+        if ($comando === 'repair') {
+            return $this->repararSinKernel(\array_slice($argv, 2));
         }
 
         // Las dos pantallas. No son operaciones y no lo fingen: una operación se ejecuta con lo que
@@ -637,6 +683,41 @@ final class Application
      * cálculo sirva a una terminal, a un TUI y a un agente sin que ninguno tenga que parsear lo que
      * otro imprimió — y para que se pueda probar sin capturar salida.
      */
+    /**
+     * `coa repair <paquete>` — sin kernel, por lo mismo que {@see doctor()}.
+     *
+     * @param list<string> $resto
+     */
+    private function repararSinKernel(array $resto): int
+    {
+        $paquete = '';
+        $seco = false;
+        foreach ($resto as $arg) {
+            if (str_starts_with($arg, '--package=')) {
+                $paquete = substr($arg, 10);
+            } elseif ($arg === '--dry-run') {
+                $seco = true;
+            } elseif ($paquete === '' && !str_starts_with($arg, '-')) {
+                // POSICIONAL TAMBIÉN, como el resto de esta CLI: lo obligatorio se teclea sin bandera.
+                $paquete = $arg;
+            }
+        }
+
+        if ($paquete === '') {
+            $this->line('uso: coa repair <paquete>   — el que `coa doctor` nombra en su `action`');
+
+            return 1;
+        }
+
+        $r = Repair::apply($this->root, $paquete, $seco);
+
+        foreach ($r as $clave => $valor) {
+            $this->line(sprintf('%-12s %s', $clave . ':', \is_scalar($valor) ? (string) $valor : (string) json_encode($valor)));
+        }
+
+        return ($r['ok'] ?? false) === true ? 0 : 1;
+    }
+
     private function doctor(): int
     {
         $declarados = $this->root . '/config/plugins.php';
@@ -648,7 +729,7 @@ final class Application
 
         /** @var list<string> $clases */
         $clases = require $declarados;
-        $reporte = (new AppDoctor())->diagnose($clases);
+        $reporte = (new AppDoctor())->diagnose($clases, $this->root);
 
         $this->line('coa doctor · ' . \count($clases) . ' plugin(s) declared');
         $this->line('');

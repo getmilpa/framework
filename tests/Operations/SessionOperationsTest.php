@@ -657,4 +657,97 @@ final class SessionOperationsTest extends TestCase
         self::assertFalse($r['ok']);
         self::assertStringContainsString('no existe la sesión', (string) $r['error']);
     }
+
+    /**
+     * EL TABLERO ES EL FOLD DEL STREAM, no un almacén — la propiedad de P19.5 que no se puede perder.
+     *
+     * En el momento en que esto guardara su propia copia de en qué columna va una tarjeta habría dos
+     * sitios que contestan «¿en qué va esto?», y divergirían. La única pregunta sería cuándo.
+     */
+    public function testTheBoardIsTheFoldOfTheStreamAndNotAStore(): void
+    {
+        $almacen = $this->almacen();
+        $almacen->start('j', 'la tarea');
+        $almacen->setTodo('j', new \Milpa\Agent\Todo('t1', 'crear el plugin'));
+        $almacen->setTodo('j', new \Milpa\Agent\Todo('t2', 'registrarlo'));
+        $almacen->setTodo('j', new \Milpa\Agent\Todo('t1', 'crear el plugin', \Milpa\Agent\TodoStatus::Done));
+
+        $r = $this->llamar('agent:board', ['session' => 'j']);
+
+        self::assertTrue($r['ok']);
+        self::assertSame(['t1'], array_column($r['columns']['done'], 'id'), 'la que se cerró está cerrada');
+        self::assertSame(['t2'], array_column($r['columns']['pending'], 'id'));
+        self::assertSame([], $r['columns']['in_progress']);
+
+        // Y DOS LECTURAS SEGUIDAS DAN LO MISMO: no hay nada que se mueva por preguntar.
+        self::assertSame($r, $this->llamar('agent:board', ['session' => 'j']));
+    }
+
+    /**
+     * Las columnas son el ENUM, no una lista escrita en el tablero.
+     *
+     * Un estado nuevo aparece como columna sin tocar el archivo, y —más importante— no puede existir
+     * un estado que el tablero no sepa pintar.
+     */
+    public function testTheColumnsAreTheEnumAndNotAHandWrittenList(): void
+    {
+        $this->almacen()->start('j', 'x');
+
+        $r = $this->llamar('agent:board', ['session' => 'j']);
+
+        $esperadas = array_map(static fn (\Milpa\Agent\TodoStatus $e): string => $e->value, \Milpa\Agent\TodoStatus::cases());
+        self::assertSame($esperadas, array_keys($r['columns']));
+        foreach ($r['columns'] as $columna) {
+            self::assertSame([], $columna, 'una sesión sin pendientes tiene columnas vacías, no ausentes');
+        }
+    }
+
+    /**
+     * LA PREGUNTA ABIERTA VA EN EL TABLERO: es trabajo detenido esperando a un humano, y un tablero
+     * que no la muestra deja al agente parado sin que nadie lo vea.
+     */
+    public function testAPausedSessionShowsItsQuestionOnTheBoard(): void
+    {
+        $almacen = $this->almacen();
+        $almacen->start('j', 'x');
+        $almacen->ask('j', new \Milpa\Agent\PendingQuestion(id: 'perm:make', question: '¿autorizas make?', options: ['sí', 'no']));
+
+        self::assertSame('¿autorizas make?', $this->llamar('agent:board', ['session' => 'j'])['pending_question'] ?? null);
+    }
+
+    /** Y el tablero NO aprueba: mover una tarjeta y consentir un efecto no son el mismo sistema. */
+    public function testTheBoardDoesNotDecideAnything(): void
+    {
+        foreach ((new \App\Operations\SessionOperations(new \Milpa\Container\DIContainer()))->operations() as $op) {
+            if ($op->name === 'agent:board') {
+                self::assertFalse($op->mutating, 'el tablero lee; consentir tiene su propia forma (Q-P19-B)');
+
+                return;
+            }
+        }
+        self::fail('no existe la operación agent:board');
+    }
+
+    /** Un tablero de una sesión que no existe se dice, en vez de pintar columnas vacías con cara de reales. */
+    public function testTheBoardOfAMissingSessionSaysSo(): void
+    {
+        $r = $this->llamar('agent:board', ['session' => 'no-existe']);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('no existe la sesión', (string) $r['error']);
+    }
+
+    /** Y sin `session` se dice qué falta. */
+    public function testTheBoardWithoutASessionSaysWhatIsMissing(): void
+    {
+        $r = $this->llamar('agent:board', []);
+
+        self::assertFalse($r['ok']);
+    }
+
+    /** Descartar sin sesión también. */
+    public function testDiscardWithoutASessionSaysWhatIsMissing(): void
+    {
+        self::assertFalse($this->llamar('agent:discard', ['because' => 'x'])['ok']);
+    }
 }
