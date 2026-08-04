@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/getmilpa/framework/compare/v0.17.2...v0.18.0) (2026-08-04)
+
+
+### Features
+
+* **agent:** el árbol de sub-agentes comparte un fondo de pasos ([68a258a](https://github.com/getmilpa/framework/commit/68a258a6f553550c842db630e308cb617d37cd2d))
+
 ## [0.17.2](https://github.com/getmilpa/framework/compare/v0.17.1...v0.17.2) (2026-08-04)
 
 
