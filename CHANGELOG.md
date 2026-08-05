@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/getmilpa/framework/compare/v0.21.0...v0.21.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* **deps:** el rango de milpa/app-runtime admite 0.5 ([99cc4d6](https://github.com/getmilpa/framework/commit/99cc4d657803fd23790f9494a249f46ea78e688b))
+
 ## [0.21.0](https://github.com/getmilpa/framework/compare/v0.20.0...v0.21.0) (2026-08-04)
 
 
