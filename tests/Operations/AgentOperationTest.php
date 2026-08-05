@@ -1133,4 +1133,187 @@ final class AgentOperationTest extends TestCase
         self::assertSame([], $agente->metas());
         self::assertNull($agente->reporte(), 'sin plugins que resolver, no hay reporte que dar');
     }
+
+    /**
+     * AN OPERATOR'S `deny` REALLY WITHDRAWS THE TOOL.
+     *
+     * The mechanism was complete but only a delegating parent could reach it: whoever ran the agent
+     * by hand had no way to contain a reviewer other than asking in prose — precisely what this house
+     * measured does not govern. This anchors that the withdrawal reaches the table the model sees.
+     */
+    public function testAnOperatorDenyReachesTheTableTheModelSees(): void
+    {
+        $vista = null;
+        $recibido = '';
+        $agente = $this->agenteQueVeLaMesa(static function (string $p, ?\Milpa\AiGateway\OptionTable $mesa) use (&$vista, &$recibido): string {
+            $vista = $mesa;
+            $recibido = $p;
+
+            return 'listo';
+        });
+
+        $handler = $this->operacionDe($agente)->handler;
+        self::assertIsCallable($handler);
+
+        /** @var array{ok: bool} $r */
+        $r = $handler(['prompt' => 'revisa', 'session' => 'rev-test', 'deny' => 'make,plugins_enable']);
+
+        self::assertTrue($r['ok']);
+        self::assertNotNull($vista, 'an explicit deny must bring a table even when the app leaves automatic withdrawal off');
+        self::assertTrue($vista->wasRemoved('make'));
+        self::assertTrue($vista->wasRemoved('plugins_enable'));
+        self::assertFalse($vista->wasRemoved('plugins_list'), 'only what was asked for goes away');
+        self::assertStringContainsString('not in your catalogue', $recibido, 'the fact changes the world; the sentence tells it why');
+    }
+
+    /**
+     * AND WITHOUT A SESSION IT REFUSES, rather than pretending it contained anything.
+     *
+     * The table lives in the session: without one the prohibition would not survive the first step.
+     * Ignoring it silently would be worse than not having the mechanism — whoever typed it walks away
+     * believing they are contained.
+     */
+    public function testWithoutASessionADenyIsRefusedInsteadOfIgnored(): void
+    {
+        $agente = $this->agenteQueContesta(static fn (string $p): string => 'should never get here');
+        $handler = $this->operacionDe($agente)->handler;
+        self::assertIsCallable($handler);
+
+        /** @var array{ok: bool, error?: string, hint?: string} $r */
+        $r = $handler(['prompt' => 'revisa', 'deny' => 'make']);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('without a session', (string) ($r['error'] ?? ''));
+        self::assertStringContainsString('--session', (string) ($r['hint'] ?? ''));
+    }
+
+    /**
+     * An agent that also lets the table it ran with be inspected.
+     *
+     * @param \Closure(string, ?\Milpa\AiGateway\OptionTable): string $responder
+     */
+    private function agenteQueVeLaMesa(\Closure $responder): AgentOperations
+    {
+        putenv('ANTHROPIC_API_KEY=llave-de-prueba');
+
+        $kernel = \App\Tests\Support\OperationsTest::bootedKernel();
+
+        return new class ($kernel->container(), $responder) extends AgentOperations {
+            /** @param \Closure(string, ?\Milpa\AiGateway\OptionTable): string $responder */
+            public function __construct(\Milpa\Interfaces\Di\DIContainerInterface $container, private readonly \Closure $responder)
+            {
+                parent::__construct($container);
+            }
+
+            protected function ask(
+                string $prompt,
+                int $pasos,
+                \Milpa\ToolRuntime\ToolRegistry $registry,
+                string $proveedor,
+                string $llave,
+                string $modelo,
+                callable $onStep,
+                array $history = [],
+                ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\AiGateway\OptionTable $mesa = null,
+                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\AiGateway\PlanBoard $tablero = null,
+            ): string {
+                $onStep();
+
+                return ($this->responder)($prompt, $mesa);
+            }
+        };
+    }
+
+    /**
+     * WITHDRAWAL BY EFFECT CLASS COVERS WHAT A LIST OF NAMES FORGETS.
+     *
+     * Q-P20-P measured the leak: with five tools denied by name, 3/3 runs reached for `plugins.lock`
+     * — mutating, and not on the list. This anchors that `mutating` as a CLASS takes it, that reads
+     * survive, and that the session bookkeeping is not swept up with it.
+     */
+    public function testDenyingAnEffectClassTakesTheOperationsNobodyNamed(): void
+    {
+        $vista = null;
+        $agente = $this->agenteQueVeLaMesa(static function (string $p, ?\Milpa\AiGateway\OptionTable $mesa) use (&$vista): string {
+            $vista = $mesa;
+
+            return 'listo';
+        });
+
+        $handler = $this->operacionDe($agente)->handler;
+        self::assertIsCallable($handler);
+
+        /** @var array{ok: bool} $r */
+        $r = $handler(['prompt' => 'revisa', 'session' => 'eff-test', 'denyEffects' => 'mutating']);
+
+        self::assertTrue($r['ok']);
+        self::assertNotNull($vista);
+        self::assertTrue($vista->wasRemoved('plugins_lock'), 'the leak Q-P20-P found must be covered by the class');
+        self::assertTrue($vista->wasRemoved('plugins_enable'));
+        self::assertFalse($vista->wasRemoved('plugins_list'), 'reading is not mutating');
+        self::assertFalse($vista->wasRemoved('plan'), 'the session notebook is not swept up: taking it away makes the agent illegible, not safer');
+    }
+
+    /**
+     * AND AN UNDECLARED OPERATION IS DENIED, not waved through.
+     *
+     * `Unknown` ranks ABOVE known-bad by construction. The opposite reading — undeclared means
+     * harmless — turns every operation nobody classified into the next `plugins.lock`.
+     */
+    public function testAnOperationWithUnknownEffectsIsDenied(): void
+    {
+        $sin = new \Milpa\Command\Operation(
+            name: 'mystery',
+            description: 'nobody classified this',
+            handler: static fn (): array => [],
+        );
+
+        self::assertSame(\Milpa\Command\Effect\Mutation::Unknown, $sin->effectCeiling()->mutation);
+        self::assertNotSame(\Milpa\Command\Effect\Mutation::None, $sin->effectCeiling()->mutation);
+    }
+
+    /**
+     * CONTAINMENT BY EFFECT IS SURVIVABLE EXACTLY WHERE THE CATALOGUE WAS CLASSIFIED.
+     *
+     * Measured 2026-08-05 on a fixture running published packages: 25 of 25 operations ceilinged at
+     * `Unknown`, so «withdraw what mutates» withdrew all 25 — reads included. The withdrawal is not
+     * softened, because unknown never reduces controls; what this anchors is that the CAUSE gets
+     * named. An agent that comes back empty because nobody classified the catalogue looks exactly
+     * like a broken agent, and whoever typed the flag would go looking anywhere but at the reason.
+     */
+    public function testAClassifiedCatalogueSurvivesContainmentByEveryClassAtOnce(): void
+    {
+        $llamado = false;
+        $vista = null;
+        $agente = $this->agenteQueVeLaMesa(static function (string $p, ?\Milpa\AiGateway\OptionTable $mesa) use (&$llamado, &$vista): string {
+            $llamado = true;
+            $vista = $mesa;
+
+            return 'listo';
+        });
+
+        $handler = $this->operacionDe($agente)->handler;
+        self::assertIsCallable($handler);
+
+        // Every class at once takes everything: nothing survives `mutating` ∪ `external` ∪
+        // `irreversible` ∪ `authority` once `Unknown` is on the deny side of each.
+        /** @var array{ok: bool, error?: string, hint?: string} $r */
+        $r = $handler([
+            'prompt' => 'revisa',
+            'session' => 'vacio-test',
+            'denyEffects' => 'mutating,external,irreversible,authority',
+        ]);
+
+        // AND ON THIS CATALOGUE IT DOES NOT FIRE, which is the other half of the finding: the four
+        // classes at once still leave the agent something to read, because this catalogue IS
+        // classified. Containment by effect is survivable exactly where the classification was done —
+        // and that is a property of the catalogue, not of the flag.
+        self::assertTrue($r['ok'], 'a classified catalogue survives containment by every class at once');
+        self::assertTrue($llamado);
+        self::assertNotNull($vista);
+        self::assertFalse($vista->wasRemoved('plugins_list'), 'a pure read survives all four classes: no mutation, no externality, reversible, read authority');
+        self::assertTrue($vista->wasRemoved('plugins_enable'));
+    }
 }
