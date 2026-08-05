@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.5](https://github.com/getmilpa/framework/compare/v0.21.4...v0.21.5) (2026-08-05)
+
+
+### Bug Fixes
+
+* **deps:** el rango de milpa/plugin admite 0.10, y con eso app-runtime 0.8 se puede instalar ([bda84f1](https://github.com/getmilpa/framework/commit/bda84f1d11c1e14f8091411f2eb87cd3d0506140))
+
 ## [0.21.4](https://github.com/getmilpa/framework/compare/v0.21.3...v0.21.4) (2026-08-05)
 
 
