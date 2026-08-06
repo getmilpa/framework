@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.6](https://github.com/getmilpa/framework/compare/v0.21.5...v0.21.6) (2026-08-06)
+
+
+### Bug Fixes
+
+* the kernel goes into the container over HTTP too — the line bin/coa always had ([74cafd4](https://github.com/getmilpa/framework/commit/74cafd4fdec364aad48f20aca418dea1b34d0347))
+
 ## [0.21.5](https://github.com/getmilpa/framework/compare/v0.21.4...v0.21.5) (2026-08-05)
 
 
