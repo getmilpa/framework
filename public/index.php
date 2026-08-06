@@ -31,6 +31,13 @@ $kernel = Kernel::boot([
     'container' => $boot['container'],
 ]);
 
+// The kernel goes INTO the container, here as in `bin/coa`: the operation layer resolves what
+// lives under the app's root — the agent session store, for one — by asking the container for the
+// kernel. Without this line every `agent:*` operation that declares an `http` surface answers
+// «nowhere to store sessions» over the web while working from the terminal, and that reads as a
+// broken app instead of as a missing line in this file.
+$boot['container']->registerService(Kernel::class, $kernel);
+
 $psr17 = new Psr17Factory();
 $request = (new ServerRequestCreator($psr17, $psr17, $psr17, $psr17))->fromGlobals();
 
