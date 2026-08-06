@@ -242,6 +242,10 @@ The box is deliberately small. Two examples of what it does **not** include:
 ## Layout
 
 ```
+.milpa/foundation.json   the constitution — born EXPLICITLY unfounded (domain: null), filled by
+                         the founding, amended only through recorded decisions
+.milpa/decisions/        the choices that shaped this app: who, what, why
+.milpa/evidence/         slice evidence — born empty, used from the founding itself
 bin/coa                  the dispatcher — boots, projects, runs
 bin/mcp-server.php       the same operations, over MCP
 config/plugins.php       which plugins boot (a list you read in a diff)
@@ -259,6 +263,16 @@ src/Tui                   the agent conversation screen
 
 `config/plugins.php` is a list, not a scan. What runs in this app is a versioned decision — a plugin
 that installs itself from the network is an attack surface, not a convenience.
+
+**Every Milpa is born with a constitution; not every Milpa needs a government yet.** The newborn's
+only domain is *founding itself*: `.milpa/foundation.json` says what this app is — domain,
+objective, boundaries, authorities — and it ships saying *not yet* (`domain: null`), with the
+authorities already defaulting to the human: no app is born lawless, not even an unfounded one.
+Declare the domain before scaffolding it; record the choices in `decisions/`; keep slice evidence
+in `evidence/`. When the constitution needs to become verifiable, compiled law — ADRs with
+supersession, enforced gates, corpus integrity — `milpa/governance` is one
+`coa capabilities:enable governance` away, and it *adopts* the foundation as its antecedent, never
+replaces it.
 
 ## Coming from an app you created before 0.21
 

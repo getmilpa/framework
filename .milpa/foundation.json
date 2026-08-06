@@ -1,0 +1,11 @@
+{
+    "schema": "milpa.foundation/v1",
+    "domain": null,
+    "objective": null,
+    "boundaries": [],
+    "authorities": {
+        "product": "human",
+        "destructive_changes": "human"
+    },
+    "founded_at": null
+}
