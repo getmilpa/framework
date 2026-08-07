@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/getmilpa/framework/compare/v0.22.0...v0.22.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **deps:** the newborn reaches milpa/app-runtime ^0.10 ([4031e99](https://github.com/getmilpa/framework/commit/4031e99cb4197ffb73928b5ba4dec41e033843dc))
+
 ## [0.22.0](https://github.com/getmilpa/framework/compare/v0.21.6...v0.22.0) (2026-08-07)
 
 
