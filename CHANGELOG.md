@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/getmilpa/framework/compare/v0.21.6...v0.22.0) (2026-08-07)
+
+
+### Features
+
+* born with a constitution — the newborn ships its foundation kit ([c33ee19](https://github.com/getmilpa/framework/commit/c33ee19c8ad96f5493062eac60c439d2c1ef244b))
+
 ## [0.21.6](https://github.com/getmilpa/framework/compare/v0.21.5...v0.21.6) (2026-08-06)
 
 
