@@ -64,12 +64,29 @@ final class AgentOperationTest extends TestCase
         return $this->operacionDe(new AgentOperations(new DIContainer()));
     }
 
+    /**
+     * `agent`, ASKED FOR BY NAME — y antes se pedía por posición.
+     *
+     * El grupo tenía una sola operación, así que `[0]` era `agent` por accidente de aritmética.
+     * Desde `app-runtime` 0.11 también aporta `agent:catalogue`, que NO está detrás de la misma
+     * guarda a propósito: fundir dos capacidades en una guarda hace que la instalada conteste por
+     * la que falta.
+     *
+     * Un índice posicional dentro de un grupo que crece no falla: **devuelve la operación
+     * equivocada y sigue verde**. Sin `milpa/agent` este ayudante ya estaba entregando
+     * `agent:catalogue` a pruebas escritas sobre `agent`, y lo único que lo tapaba era que esos
+     * casos saltan sin el paquete. Pedir por nombre convierte el crecimiento del grupo en un
+     * fallo que dice cuál falta, en vez de en una prueba que mide otra cosa.
+     */
     private function operacionDe(AgentOperations $proveedor): Operation
     {
-        $operaciones = $proveedor->operations();
-        self::assertCount(1, $operaciones);
+        foreach ($proveedor->operations() as $operacion) {
+            if ($operacion->name === 'agent') {
+                return $operacion;
+            }
+        }
 
-        return $operaciones[0];
+        self::fail('el grupo del agente ya no ofrece la operación «agent»');
     }
 
     /**

@@ -77,9 +77,23 @@ final class CapabilityRepairTest extends TestCase
      *
      * Es la operación con más tentación de decidir sola: el diagnóstico ya «sabe» qué hacer. Instalar
      * algo que nadie pidió es cambiar la app por una conclusión propia.
+     *
+     * ── POR QUÉ ESTE OPT-IN LLEGÓ DESPUÉS QUE LOS DE SUS NUEVE HERMANOS ─────────────────────────
+     *
+     * Porque hasta `app-runtime` 0.10 este caso no necesitaba el paquete: `repair` se DECLARABA
+     * siempre y sólo su implementación era opcional, así que leer la declaración bastaba. Desde B3
+     * la declaración misma es condicional —lo que no se puede hacer no se ofrece— y examinarla
+     * pasó a exigir lo que la implementa.
+     *
+     * La lección no es el opt-in que faltaba: es que **gatear una declaración cambia quién puede
+     * mirarla**. Un caso que sólo leía metadatos se volvió dependiente sin que su cuerpo cambiara
+     * una línea, y no lo encontró revisar el diff — lo encontró correr la suite contra el paquete
+     * nuevo.
      */
     public function testTheTargetIsDeclaredSoTheHumanHasToNameIt(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         self::assertSame('package', $this->operacion('repair')->namedTarget);
         self::assertTrue($this->operacion('repair')->mutating);
     }
