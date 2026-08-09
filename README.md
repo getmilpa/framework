@@ -365,6 +365,50 @@ router-with-batteries. `milpa/data` is here for one job — storing API tokens �
 (file, sqlite, mysql, memory) are as much persistence as this floor takes a position on. `milpa/http` ships routing **contracts**; bring your own PSR-7 implementation
 (this app ships `nyholm/psr7`) and your own persistence.
 
+## Who this is not for
+
+The list above says which features are missing. This one says which *architectures* are, because
+choosing the operation as the atom is a choice about what the world is made of, and a reader
+deserves to find that out here rather than three months in.
+
+An `Operation` is a verb that answers once. That fits an app whose capabilities are things someone
+— or something — decides to do, and it fits badly when the primitive is something else:
+
+- **Event-sourced domains.** There is an event store in here, and the agent's own session state is
+  built on it, but it is machinery rather than an offered primitive. If `OrderPlaced` is the thing
+  your domain is made of, this floor gives you no natural home for it and you would be modelling
+  events as verbs in the past tense.
+- **Long-running workflows.** An operation is a step, not a sequence. A three-stage payment that
+  survives restarts is not one operation and there is no orchestration primitive underneath it.
+- **Streams and subscriptions.** An operation is called and returns. Continuous output — a feed, a
+  tail, a live subscription — is not a shape it has.
+- **Rich stateful UI.** Operations are stateless by design and the TUI projects them one at a time.
+  An interface whose value is in its own accumulated state is not what a projector gives you.
+
+And two limits that are current rather than architectural, stated so nobody discovers them by
+surprise: a constitution is founded and amended by **one human authority** — the vocabulary is
+`human`, there is no multi-signer deliberation — and there is **no demo mode**, so the agent will
+tell you what it cannot reach instead of answering plausibly without having called anything. That
+costs a first impression on purpose. An answer nobody produced teaches you to trust answers nobody
+produced.
+
+## The box is small; the runtime is federated
+
+This package is deliberately small, and that is only half the sentence. What you end up **running**
+is this floor plus whichever of the sibling packages your app turns out to need — identity,
+persistence, agent sessions, the model gateway, the MCP server, the dev tools. The framework stays
+a floor; the capability layer accumulates outside it, on purpose, so that installing a plugin is
+never the same act as publishing an API.
+
+The consequence is that nobody should have to discover that federation one refusal at a time. Ask
+the app instead:
+
+```console
+$ php bin/coa capabilities
+```
+
+It lists what is installed, what is available, and the exact command that grows into each one.
+
 ## License
 
 Apache-2.0 © Rodrigo Vicente - TeamX Agency
