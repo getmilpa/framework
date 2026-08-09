@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/getmilpa/framework/compare/v0.22.2...v0.23.0) (2026-08-09)
+
+
+### Features
+
+* the newborn can found itself, and two tests stopped measuring by accident ([820b1e0](https://github.com/getmilpa/framework/commit/820b1e06d9674fadb06533a851eb84d88161c948))
+
 ## [0.22.2](https://github.com/getmilpa/framework/compare/v0.22.1...v0.22.2) (2026-08-09)
 
 
