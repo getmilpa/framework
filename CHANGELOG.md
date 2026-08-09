@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/getmilpa/framework/compare/v0.23.0...v0.23.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **tests:** founding your app must not turn its own suite red ([dd93cb5](https://github.com/getmilpa/framework/commit/dd93cb5c306258d599d3870082b225bfc250acea))
+
 ## [0.23.0](https://github.com/getmilpa/framework/compare/v0.22.2...v0.23.0) (2026-08-09)
 
 
