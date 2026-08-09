@@ -99,24 +99,36 @@ return ['expose' => ['plugins.list']];   //  →  GET /plugins
 ```console
 $ curl -s localhost:8000/plugins
 {"error":"[MILPA_UNAUTHENTICATED] … before calling a scope-protected route"}      # 401
+```
 
+That 401 is the surface working rather than failing. To get past it you need an identity, which is
+its own opt-in — `composer require milpa/auth milpa/data`, and `token:*` appears:
+
+```console
 $ php bin/coa token:new --actor=demo --scopes=plugins:read
 $ curl -s -H "Authorization: Bearer $TOKEN" localhost:8000/plugins
 {"plugins":[{"name":"HelloPlugin","version":"0.1.0","type":"Web","enabled":true}]}   # 200
 ```
 
-That 401 is the surface working rather than failing, and a token holding the wrong scope answers
-`403` naming the scope it wanted. Neither the operation nor the plugin knows any of it happened.
+A token holding the wrong scope answers `403` naming the scope it wanted. Neither the operation nor
+the plugin knows any of it happened.
 
 **TUI** — `php bin/coa shell`, every operation on one screen, this one among them.
 
 One `new Operation(...)`, four answers. The envelope differs because each surface has its own — a
 CLI result, an MCP content block, a bare HTTP body — and the payload underneath is the same object.
 
-What a surface *may* show stays a decision, and it is declared where the capability is: an operation
-names `surfaces:` when it should not be everywhere, which is why `agent` and `token:*` are
-terminal-only by declaration rather than by accident, and why `config/http.php` starts empty.
-Exposing an operation to the network is a decision someone should be able to read in a diff.
+What a surface *may* show stays a decision, and it is declared where the capability is:
+`Operation::supportsSurface()` reads a `surfaces:` argument that every projector consults, and the
+TUI's own screen consults it too, so an operation kept off a surface is absent from it rather than
+merely hidden. `plugins:disable-unsafe` declares `['cli']` because recovering a host is work for
+whoever holds the terminal; the `agent` and `token:*` operations declare the same, and neither
+exists at all until its capability is installed.
+
+`config/http.php` starts empty for a different reason and it applies to every operation, not to
+three: `coa` and MCP run on the machine of whoever invokes them, while a route can be called by
+anyone who reaches the server. Exposing an operation to the network is a decision someone should be
+able to read in a diff.
 
 ## Consent is part of the declaration
 
