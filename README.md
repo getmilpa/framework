@@ -68,6 +68,56 @@ it. Neither of them is something you write.
 The corollary is the point: you never write the same capability twice, and you cannot have a
 capability that the terminal offers and an agent cannot reach.
 
+## The same operation, on four surfaces
+
+A claim like that is cheap, so here is the whole of it on one install. `plugins.list` is declared
+once, by the plugin-management plugin a newborn app already boots. Nobody wrote a controller, a
+route, an MCP tool or a form for it. Output is trimmed to four fields for width and otherwise
+untouched.
+
+**Terminal** — a bare `composer create-project`, nothing else installed:
+
+```console
+$ php bin/coa plugins:list --json
+{"ok":true,"result":{"plugins":[{"name":"HelloPlugin","version":"0.1.0","type":"Web","enabled":true}]}}
+```
+
+**MCP** — after `composer require milpa/mcp-server`, speak JSON-RPC to `bin/mcp-server.php`:
+
+```console
+$ … | php bin/mcp-server.php
+{"jsonrpc":"2.0","result":{"content":[{"type":"text",
+ "text":"{\"success\":true,\"data\":{\"plugins\":[{\"name\":\"HelloPlugin\",\"version\":\"0.1.0\",…}]}}"}]}}
+```
+
+**HTTP** — name it in `config/http.php`, which serves nothing until you do:
+
+```php
+return ['expose' => ['plugins.list']];   //  →  GET /plugins
+```
+
+```console
+$ curl -s localhost:8000/plugins
+{"error":"[MILPA_UNAUTHENTICATED] … before calling a scope-protected route"}      # 401
+
+$ php bin/coa token:new --actor=demo --scopes=plugins:read
+$ curl -s -H "Authorization: Bearer $TOKEN" localhost:8000/plugins
+{"plugins":[{"name":"HelloPlugin","version":"0.1.0","type":"Web","enabled":true}]}   # 200
+```
+
+That 401 is the surface working rather than failing, and a token holding the wrong scope answers
+`403` naming the scope it wanted. Neither the operation nor the plugin knows any of it happened.
+
+**TUI** — `php bin/coa shell`, every operation on one screen, this one among them.
+
+One `new Operation(...)`, four answers. The envelope differs because each surface has its own — a
+CLI result, an MCP content block, a bare HTTP body — and the payload underneath is the same object.
+
+What a surface *may* show stays a decision, and it is declared where the capability is: an operation
+names `surfaces:` when it should not be everywhere, which is why `agent` and `token:*` are
+terminal-only by declaration rather than by accident, and why `config/http.php` starts empty.
+Exposing an operation to the network is a decision someone should be able to read in a diff.
+
 ## Consent is part of the declaration
 
 `mutating` says the operation changes something. `requiresConfirmation` says the change cannot be
