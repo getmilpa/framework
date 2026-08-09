@@ -70,11 +70,16 @@ final class HomeController
                 <section class="next" aria-labelledby="next-steps">
                     <h2 id="next-steps">Your first five minutes</h2>
                     <p>Do not guess what booted. Ask the app:</p>
-                    <pre><code>php bin/coa wow&#10;php bin/coa doctor&#10;php bin/coa inspect:routes</code></pre>
-                    <p>Then make the smallest visible change and inspect it:</p>
-                    <pre><code>php bin/coa make:controller DemoPlugin DemoController --path=/demo --register&#10;php bin/coa inspect:routes</code></pre>
-                    <p>When you want tools for agents, opt in explicitly:</p>
-                    <pre><code>php bin/coa agent:enable&#10;php bin/coa inspect:tools</code></pre>
+                    <pre><code>php bin/coa list&#10;php bin/coa plugins:list</code></pre>
+                    <p>What this app can do today — and what it could do next, each one already
+                       carrying the command that grows it:</p>
+                    <pre><code>php bin/coa capabilities</code></pre>
+                    <p>Take a package name it lists under <code>available</code> and grow into it.
+                       Ask first what it would run:</p>
+                    <pre><code>php bin/coa capabilities:enable milpa/devtools --dry-run</code></pre>
+                    <p>Then every operation on one screen, including whatever a capability just
+                       added:</p>
+                    <pre><code>php bin/coa shell</code></pre>
                 </section>
             </body>
             </html>
