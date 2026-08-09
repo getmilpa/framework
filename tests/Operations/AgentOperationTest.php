@@ -77,9 +77,23 @@ final class AgentOperationTest extends TestCase
      * `agent:catalogue` a pruebas escritas sobre `agent`, y lo único que lo tapaba era que esos
      * casos saltan sin el paquete. Pedir por nombre convierte el crecimiento del grupo en un
      * fallo que dice cuál falta, en vez de en una prueba que mide otra cosa.
+     *
+     * ── Y EL OPT-IN VIVE AQUÍ, NO EN CADA CASO ──────────────────────────────────────────────────
+     *
+     * `agent` sólo se declara cuando la capacidad `agent-runs` está instalada, y quien la provee es
+     * `milpa/ai-gateway` — no `milpa/agent`, que es la que el nombre sugiere. Cinco casos de este
+     * archivo pedían opt-in por las sesiones y el almacén de eventos y **no por la compuerta que de
+     * verdad hace existir la operación**, así que en una instalación con el agente y sin el gateway
+     * corrían y fallaban.
+     *
+     * Se declara en el ayudante porque **el requisito es del valor que devuelve**, no del caso que
+     * lo pide: puesto en cada caso, el sexto que se escriba lo va a olvidar igual que lo olvidaron
+     * estos cinco.
      */
     private function operacionDe(AgentOperations $proveedor): Operation
     {
+        OptIn::needs(\Milpa\AiGateway\OptionTable::class);
+
         foreach ($proveedor->operations() as $operacion) {
             if ($operacion->name === 'agent') {
                 return $operacion;
