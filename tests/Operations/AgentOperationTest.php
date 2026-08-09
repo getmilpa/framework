@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Operations;
 
+use App\Tests\Support\OptIn;
 use Milpa\AppRuntime\Operations\AgentOperations;
 use Milpa\Command\Operation;
 use Milpa\Container\DIContainer;
@@ -121,6 +122,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testTheAnswerComesBackWithTheStepsItTookAndTheToolsItHad(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $agente = $this->agenteQueContesta(static fn (string $p): string => "contesté a: {$p}");
         $handler = $this->operacionDe($agente)->handler;
         self::assertIsCallable($handler);
@@ -142,6 +145,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testAProviderFailureComesBackVerbatim(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $agente = $this->agenteQueContesta(static function (string $p): string {
             throw new \RuntimeException('Anthropic API Error: HTTP 401 Unauthorized');
         });
@@ -164,6 +169,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testTheProviderFollowsWhichKeyIsPresent(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         putenv('OPENAI_API_KEY=llave-openai');
 
         $kernel = \App\Tests\Support\OperationsTest::bootedKernel();
@@ -212,6 +219,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testWithoutAKernelThereAreNoToolsAndItSaysSo(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         putenv('ANTHROPIC_API_KEY=llave-de-prueba');
 
         $handler = $this->operacion()->handler;
@@ -232,6 +241,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testWithoutAKeyItSaysWhatIsMissingInsteadOfPretending(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $handler = $this->operacion()->handler;
         self::assertIsCallable($handler);
 
@@ -247,6 +258,8 @@ final class AgentOperationTest extends TestCase
     /** Sin prompt no se le pregunta nada a nadie. */
     public function testWithoutAPromptItRefusesBeforeReachingAnybody(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $handler = $this->operacion()->handler;
         self::assertIsCallable($handler);
 
@@ -267,6 +280,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testItMutatesAndLeavesTheSignatureToEachToolThatDemandsIt(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $op = $this->operacion();
 
         self::assertTrue($op->mutating);
@@ -281,6 +296,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testItIsATerminalSurfaceOnly(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $op = $this->operacion();
 
         self::assertTrue($op->supportsSurface('cli'));
@@ -297,6 +314,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testADeclaredEndpointWinsOverAProviderKeyInTheEnvironment(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         putenv('ANTHROPIC_API_KEY=una-llave-olvidada');
         putenv('MILPA_AGENT_BASE_URL=https://llama.local');
         putenv('MILPA_AGENT_MODEL=qwen3-coder:30b');
@@ -533,6 +552,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testWithoutASessionNothingIsRemembered(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $eventos = new InMemoryEventStore();
         $almacen = new SessionStore($eventos);
         $agente = $this->agenteConSesion(static fn (string $p): string => 'listo', $almacen);
@@ -552,6 +573,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testWithASessionBothTurnsAreRecordedAndComeBackAsHistory(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $almacen = new SessionStore(new InMemoryEventStore());
         $historial = null;
         $agente = $this->agenteConSesion(static fn (string $p): string => "contesté a: {$p}", $almacen, $historial);
@@ -584,6 +607,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testASessionWaitingForAnAnswerRefusesToContinue(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $almacen = new SessionStore(new InMemoryEventStore());
         $almacen->start('s1', 'migrar');
         $almacen->ask('s1', new PendingQuestion('q1', '¿sqlite o mysql?', ['sqlite', 'mysql']));
@@ -599,6 +624,8 @@ final class AgentOperationTest extends TestCase
     /** Una sesión terminada tampoco: se abre otra, y la negativa dice cómo. */
     public function testAnEndedSessionRefusesAndSaysWhatToDo(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $almacen = new SessionStore(new InMemoryEventStore());
         $almacen->start('s1', 'migrar');
         $almacen->end('s1', 'objetivo cumplido');
@@ -620,6 +647,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testWhatReachesTheModelIsTheWindowAndNotTheWholeStream(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $almacen = new SessionStore(new InMemoryEventStore());
         $almacen->start('s1', 'una jornada larga');
         for ($i = 1; $i <= 10; ++$i) {
@@ -665,6 +694,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testTheModeCanBeChosenWhenTheSessionOpens(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $almacen = new SessionStore(new InMemoryEventStore());
         $agente = $this->agenteConSesion(static fn (string $p): string => 'ok', $almacen);
 
@@ -683,6 +714,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testAModeOnALiveSessionChangesItAndSilenceLeavesItAlone(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $almacen = new SessionStore(new InMemoryEventStore());
         $agente = $this->agenteConSesion(static fn (string $p): string => 'ok', $almacen);
 
@@ -706,6 +739,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testALongSessionIsCompactedBeforeAskingAndSaysSo(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $almacen = new SessionStore(new InMemoryEventStore());
         $almacen->start('s1', 'una jornada larga');
         for ($i = 1; $i <= 30; ++$i) {
@@ -735,6 +770,8 @@ final class AgentOperationTest extends TestCase
     /** Por debajo del umbral no compacta, y no lo dice. */
     public function testAShortSessionIsNotCompacted(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $almacen = new SessionStore(new InMemoryEventStore());
         $agente = $this->agenteConSesion(static fn (string $p): string => 'ok', $almacen);
 
@@ -843,6 +880,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testLaPerillaDeReproyeccionLlegaAlBucle(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\PlanBoard::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $almacen = new \Milpa\Agent\SessionStore(new \Milpa\EventStore\InMemoryEventStore());
 
         self::assertNotNull($this->tableroCon(true, 's1', $almacen), 'con la perilla encendida');
@@ -859,6 +898,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testElTableroTraeLasTarjetasDeLaSesion(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\PlanBoard::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $almacen = new \Milpa\Agent\SessionStore(new \Milpa\EventStore\InMemoryEventStore());
         $almacen->start('s2', 'un objetivo', \Milpa\Agent\AutonomyMode::Auto);
 
@@ -953,6 +994,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testAnInterruptedTurnIsReportedAsADecisionNotAFailure(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         putenv('ANTHROPIC_API_KEY=llave-de-prueba');
 
         $almacen = new SessionStore(new InMemoryEventStore());
@@ -1143,6 +1186,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testAnOperatorDenyReachesTheTableTheModelSees(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $vista = null;
         $recibido = '';
         $agente = $this->agenteQueVeLaMesa(static function (string $p, ?\Milpa\AiGateway\OptionTable $mesa) use (&$vista, &$recibido): string {
@@ -1175,6 +1220,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testWithoutASessionADenyIsRefusedInsteadOfIgnored(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $agente = $this->agenteQueContesta(static fn (string $p): string => 'should never get here');
         $handler = $this->operacionDe($agente)->handler;
         self::assertIsCallable($handler);
@@ -1235,6 +1282,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testDenyingAnEffectClassTakesTheOperationsNobodyNamed(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $vista = null;
         $agente = $this->agenteQueVeLaMesa(static function (string $p, ?\Milpa\AiGateway\OptionTable $mesa) use (&$vista): string {
             $vista = $mesa;
@@ -1285,6 +1334,8 @@ final class AgentOperationTest extends TestCase
      */
     public function testAClassifiedCatalogueSurvivesContainmentByEveryClassAtOnce(): void
     {
+        OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
+
         $llamado = false;
         $vista = null;
         $agente = $this->agenteQueVeLaMesa(static function (string $p, ?\Milpa\AiGateway\OptionTable $mesa) use (&$llamado, &$vista): string {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Operations;
 
+use App\Tests\Support\OptIn;
 use Milpa\AppRuntime\Operations\CapabilityOperations;
 use Milpa\Command\Operation;
 use PHPUnit\Framework\TestCase;
@@ -42,6 +43,36 @@ final class CapabilityRepairTest extends TestCase
     }
 
     /**
+     * Un paquete que esta app DE VERDAD tiene — derivado, nunca clavado (evidence/0104).
+     *
+     * ── POR QUÉ IMPORTA CUÁL SE NOMBRA ───────────────────────────────────────────────────────────
+     *
+     * `Repair::apply` verifica, después de que composer contesta 0, que el paquete **aparezca** en
+     * `vendor/composer/installed.json`, porque *«el código de salida es una afirmación del subproceso
+     * sobre sí mismo, no sobre esta app»*. Los tres casos que llegan a esa guarda inyectan un corredor
+     * falso —así que nada se instala— y clavaban `milpa/mcp-server`, que un recién nacido no trae: la
+     * app se negaba con razón y la prueba lo leía como defecto suyo. evidence/0103 lo publicó como
+     * «tres defectos reales de `repair`» y era esto.
+     *
+     * Se deriva del MISMO archivo que la guarda consulta, así que no puede desalinearse con ella. Se
+     * prefiere `milpa/devtools` porque el `OptIn::needs()` de cada caso ya garantiza su presencia: si
+     * no estuviera, el método habría saltado antes de llegar aquí.
+     */
+    private function paqueteQueSiEsta(): string
+    {
+        $archivo = \dirname(__DIR__, 2) . '/vendor/composer/installed.json';
+        self::assertFileExists($archivo, 'sin installed.json no se puede derivar nada');
+
+        /** @var array{packages?: list<array{name?: string}>} $json */
+        $json = json_decode((string) file_get_contents($archivo), true, 512, JSON_THROW_ON_ERROR);
+        $nombres = array_column($json['packages'] ?? [], 'name');
+
+        self::assertContains('milpa/devtools', $nombres, 'la compuerta exige devtools, así que tiene que estar');
+
+        return 'milpa/devtools';
+    }
+
+    /**
      * EL OBJETIVO LO NOMBRA EL HUMANO (ADR-0044), y en reparar es donde más importa.
      *
      * Es la operación con más tentación de decidir sola: el diagnóstico ya «sabe» qué hacer. Instalar
@@ -62,6 +93,8 @@ final class CapabilityRepairTest extends TestCase
      */
     public function testItRefusesAPackageTheDiagnosisDidNotRecommend(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $r = $this->reparar(['package' => 'vendor/lo-que-sea'], ['milpa/mcp-server']);
 
         self::assertFalse($r['ok']);
@@ -71,6 +104,8 @@ final class CapabilityRepairTest extends TestCase
     /** Y la negativa no es un callejón: dice lo que SÍ se puede reparar. */
     public function testTheRefusalSaysWhatCanBeRepaired(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $r = $this->reparar(['package' => 'vendor/otro'], ['milpa/mcp-server', 'milpa/data']);
 
         self::assertSame(['milpa/mcp-server', 'milpa/data'], $r['recommended']);
@@ -80,6 +115,8 @@ final class CapabilityRepairTest extends TestCase
     /** Con un diagnóstico que no recomienda nada, lo dice así — no como «ese paquete no existe». */
     public function testWithNothingToRepairItSaysThatAndNotSomethingElse(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $r = $this->reparar(['package' => 'milpa/mcp-server'], []);
 
         self::assertFalse($r['ok']);
@@ -96,6 +133,8 @@ final class CapabilityRepairTest extends TestCase
      */
     public function testWhatTheDiagnosisRecommendsGoesThroughToTheOneThatVerifies(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $r = $this->reparar(
             ['package' => 'milpa/mcp-server', 'dry_run' => true],
             ['milpa/mcp-server'],
@@ -109,6 +148,8 @@ final class CapabilityRepairTest extends TestCase
     /** Sin `package` se dice qué falta, en vez de reparar lo primero que encuentre. */
     public function testWithoutAPackageItSaysWhatIsMissing(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $r = $this->reparar([], ['milpa/mcp-server']);
 
         self::assertFalse($r['ok']);
@@ -124,11 +165,13 @@ final class CapabilityRepairTest extends TestCase
      */
     public function testARepairThatLeavesTheAppUnableToBootIsNotARepair(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         // EL DOBLE DISTINGUE LOS DOS COMANDOS, porque son dos hechos distintos: composer sí pudo, y
         // el arranque posterior no. Un doble que contestara igual a los dos mediría uno solo.
         $r = $this->reparar(
-            ['package' => 'milpa/mcp-server'],
-            ['milpa/mcp-server'],
+            ['package' => $paquete = $this->paqueteQueSiEsta()],
+            [$paquete],
             static fn (string $cmd): array => str_contains($cmd, 'composer')
                 ? [0, ['Package operations: 1 install']]
                 : [1, ['MILPA_CAPABILITY_MISSING: nadie provee «x.y»']],
@@ -144,9 +187,11 @@ final class CapabilityRepairTest extends TestCase
     /** Y cuando sí arranca, lo dice — no se calla el hecho que acaba de comprobar. */
     public function testWhenItStillBootsItSaysSo(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $r = $this->reparar(
-            ['package' => 'milpa/mcp-server'],
-            ['milpa/mcp-server'],
+            ['package' => $paquete = $this->paqueteQueSiEsta()],
+            [$paquete],
             static fn (string $cmd): array => [0, ['✓ el grafo cierra']],
         );
 
@@ -162,10 +207,12 @@ final class CapabilityRepairTest extends TestCase
      */
     public function testTheCheckRunsTheAppAgainInsteadOfAskingItsOwnMemory(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $visto = null;
         $this->reparar(
-            ['package' => 'milpa/mcp-server'],
-            ['milpa/mcp-server'],
+            ['package' => $paquete = $this->paqueteQueSiEsta()],
+            [$paquete],
             static function (string $cmd) use (&$visto): array {
                 $visto[] = $cmd;
 

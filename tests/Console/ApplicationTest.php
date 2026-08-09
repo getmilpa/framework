@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Console;
 
+use App\Tests\Support\OptIn;
 use Milpa\AppRuntime\Console\Application;
 use PHPUnit\Framework\TestCase;
 
@@ -41,9 +42,17 @@ final class ApplicationTest extends TestCase
         self::assertStringContainsString('Every command is a declared operation', $r['texto']);
         // De las dos fuentes: `plugins:*` los declara un plugin arrancado, `validate` y `make` los
         // publica un paquete que esta app adopta.
+        // PISO: que la ayuda salga de las operaciones declaradas se mide sin un solo opt-in, y
+        // `plugins:*` los declara un plugin arrancado (evidence/0103).
         self::assertStringContainsString('plugins:list', $r['texto']);
-        self::assertStringContainsString('validate', $r['texto']);
-        self::assertStringContainsString('make', $r['texto']);
+        self::assertStringContainsString('capabilities', $r['texto']);
+
+        // FRONTERA: `validate` y `make` los publica un paquete que esta app ADOPTA. Exigirlos aquí
+        // hacía que el piso de arriba se perdiera junto con ellos.
+        if (OptIn::has(\Milpa\DevTools\Doctor\Repair::class)) {
+            self::assertStringContainsString('validate', $r['texto']);
+            self::assertStringContainsString('make', $r['texto']);
+        }
     }
 
     /** Lo que muta se lista aparte de lo que consulta, porque no se leen igual. */
@@ -90,12 +99,16 @@ final class ApplicationTest extends TestCase
      */
     public function testRequiredInputIsWrittenPositionally(): void
     {
-        $r = $this->coa('validate HelloPlugin --json');
+        // RE-VEHICULADO DE `validate` A `plugins:show` (evidence/0103). La propiedad —que un
+        // posicional llegue al esquema como entrada obligatoria— es PISO: se mide con cero opt-ins.
+        // Montada sobre `validate`, que es de las dev tools, nacía roja en un recién nacido y el
+        // piso se perdía con la frontera. `plugins:show` declara `name` obligatorio y existe pelona.
+        $r = $this->coa('plugins:show HelloPlugin --json');
 
-        /** @var array{result: array{target: string}} $json */
+        /** @var array{result: array{name: string}} $json */
         $json = json_decode(trim($r['texto']), true, 512, JSON_THROW_ON_ERROR);
 
-        self::assertSame('HelloPlugin', $json['result']['target']);
+        self::assertSame('HelloPlugin', $json['result']['name']);
     }
 
     /**
@@ -172,6 +185,8 @@ final class ApplicationTest extends TestCase
      */
     public function testTheDoctorExplainsTheAppWithoutBootingIt(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $r = $this->doctorEnProceso();
 
         self::assertSame(0, $r['codigo'], $r['texto']);
@@ -187,12 +202,16 @@ final class ApplicationTest extends TestCase
      */
     public function testTheDoctorExitsGreenWhenTheGraphCloses(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         self::assertSame(0, $this->doctorEnProceso()['codigo']);
     }
 
     /** Se ofrece en la ayuda: una capacidad que existe y no se anuncia no la encuentra nadie. */
     public function testTheDoctorIsOfferedInTheHelp(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         self::assertStringContainsString('doctor', $this->coa()['texto']);
     }
 
@@ -208,6 +227,8 @@ final class ApplicationTest extends TestCase
      */
     public function testWhenTheGraphDoesNotCloseTheDoctorPrintsTheLearnableError(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $raiz = sys_get_temp_dir() . '/milpa-doctor-roto-' . bin2hex(random_bytes(4));
         mkdir($raiz . '/config', 0o777, true);
         mkdir($raiz . '/src/Plugins/Huerfano', 0o777, true);
@@ -286,6 +307,8 @@ final class ApplicationTest extends TestCase
      */
     public function testSlashSessionsListsAndSwitchesWithoutAskingTheModel(): void
     {
+        OptIn::needs(\Milpa\Agent\SessionStore::class);
+
         $app = new Application(\dirname(__DIR__, 2));
         $metodo = new \ReflectionMethod($app, 'preguntarAlAgente');
 
@@ -327,6 +350,8 @@ final class ApplicationTest extends TestCase
      */
     public function testAChildsPendingQuestionIsFoundByLineageAndNotByName(): void
     {
+        OptIn::needs(\Milpa\Agent\SessionStore::class);
+
         // La raíz del paquete, que ES una app Milpa — igual que el test de `/sessions` de arriba. Los
         // ids llevan sufijo aleatorio porque el almacén es el de esa app y no se puede borrar de él:
         // un stream es una bitácora, no una tabla.
@@ -369,6 +394,8 @@ final class ApplicationTest extends TestCase
     /** Y contestarle al hijo va por la MISMA operación que contesta las propias, con su id. */
     public function testAnsweringAChildGoesThroughTheSameOperationWithItsOwnId(): void
     {
+        OptIn::needs(\Milpa\Agent\SessionStore::class);
+
         $j = 'jornada-' . bin2hex(random_bytes(3));
         $app = new Application(\dirname(__DIR__, 2));
 
@@ -406,6 +433,8 @@ final class ApplicationTest extends TestCase
      */
     public function testRepairAnswersOnARootThatCannotBoot(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $raiz = sys_get_temp_dir() . '/milpa-sin-kernel-' . bin2hex(random_bytes(4));
         mkdir($raiz . '/config', 0o775, true);
         file_put_contents($raiz . '/config/plugins.php', '<?php return [];');
@@ -428,6 +457,8 @@ final class ApplicationTest extends TestCase
     /** Sin paquete dice cómo se usa, en vez de reparar lo primero que encuentre. */
     public function testRepairWithoutAPackageSaysHowItIsUsed(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $app = new Application(\dirname(__DIR__, 2));
 
         ob_start();

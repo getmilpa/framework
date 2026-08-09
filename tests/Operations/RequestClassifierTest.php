@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Operations;
 
+use App\Tests\Support\OptIn;
 use Milpa\AppRuntime\Operations\AgentOperations;
 use Milpa\AiGateway\LlmService;
 use Milpa\Container\DIContainer;
@@ -71,11 +72,15 @@ final class RequestClassifierTest extends TestCase
 
     public function testAClearReadsVerdictIsCalledReads(): void
     {
+        OptIn::needs(LlmService::class);
+
         self::assertSame('reads', $this->clasificar($this->agente(['content' => 'READS'])));
     }
 
     public function testAClearChangesVerdictIsCalledChanges(): void
     {
+        OptIn::needs(LlmService::class);
+
         self::assertSame('changes', $this->clasificar($this->agente(['content' => 'CHANGES'])));
     }
 
@@ -87,24 +92,32 @@ final class RequestClassifierTest extends TestCase
      */
     public function testAnUnreachableJudgeIsNotAChangesVerdict(): void
     {
+        OptIn::needs(LlmService::class);
+
         self::assertSame('unreachable', $this->clasificar($this->agente(new \RuntimeException('sin red'))));
     }
 
     /** Un párrafo sin la palabra no emitió juicio. */
     public function testAnAnswerWithoutTheWordIsNoVerdict(): void
     {
+        OptIn::needs(LlmService::class);
+
         self::assertSame('no-verdict', $this->clasificar($this->agente(['content' => 'pues depende…'])));
     }
 
     /** Y una respuesta con LAS DOS palabras tampoco: es el modelo dudando en voz alta. */
     public function testAnAnswerWithBothWordsIsNoVerdictNotChanges(): void
     {
+        OptIn::needs(LlmService::class);
+
         self::assertSame('no-verdict', $this->clasificar($this->agente(['content' => 'READS or CHANGES, hard to say'])));
     }
 
     /** Sin la perilla, el clasificador ni corre — y lo dice con su propio nombre. */
     public function testWithTheKnobOffItSaysOffAndAsksNobody(): void
     {
+        OptIn::needs(LlmService::class);
+
         $modelo = $this->createMock(LlmService::class);
         $modelo->expects($this->never())->method('generateResponse');
 
@@ -185,6 +198,70 @@ final class RequestClassifierTest extends TestCase
     }
 
     /**
+     * EL PISO DEL FILTRO, CONSTRUIDO — se mide sin que la superficie de agente exista (evidence/0108).
+     *
+     * ── POR QUÉ HIZO FALTA CONSTRUIRLO ───────────────────────────────────────────────────────────
+     *
+     * La prueba de abajo afirma que `agent_answer` y `agent_mode` NO están en el catálogo del agente, y
+     * evidence/0107 midió que en un recién nacido eso **no puede fallar**: no están porque
+     * `milpa/agent` no está, no porque el filtro los retire. Borrando el filtro, el arm pelón seguía
+     * verde (evidence/0106, M4). Dos aserciones que esta casa presentó como piso y no medían nada.
+     *
+     * ── LA CONSTRUCCIÓN ──────────────────────────────────────────────────────────────────────────
+     *
+     * `toolsOfThisApp()` fusiona `$extra` en el catálogo **antes** de aplicar el filtro, así que el
+     * sujeto se puede FABRICAR: una `Operation` llamada `agent:answer` es un objeto, no un paquete. Con
+     * las sintéticas dentro, la aguja SÍ puede estar presente — y entonces la negación mide.
+     *
+     * Los tres nombres van LITERALES y no leídos de la lista del código: leerlos volvería la prueba
+     * circular y mutar el filtro nunca la pondría roja, que es justo lo que se quiere que pase.
+     */
+    public function testTheWithdrawalFilterIsMeasuredWithNoAgentSurfaceInstalled(): void
+    {
+        $raiz = \dirname(__DIR__, 2);
+        /** @var array{container: \Milpa\Interfaces\Di\DIContainerInterface, plugins: list<class-string>} $boot */
+        $boot = require $raiz . '/config/boot.php';
+        /** @var array<string, mixed> $config */
+        $config = require $raiz . '/config/app.php';
+        $kernel = \Milpa\Runtime\Kernel::boot([
+            'root' => $raiz,
+            'plugins' => $boot['plugins'],
+            'config' => $config,
+            'container' => $boot['container'],
+            'toolRegistry' => new \Milpa\ToolRuntime\ToolRegistry(new \Psr\Log\NullLogger()),
+        ]);
+        $boot['container']->registerService(\Milpa\Runtime\Kernel::class, $kernel);
+        $agente = new AgentOperations($kernel->container());
+
+        $sintetica = static fn (string $nombre): \Milpa\Command\Operation => new \Milpa\Command\Operation(
+            name: $nombre,
+            description: 'sintética de evidence/0108',
+            handler: static fn (array $i): array => ['ok' => true],
+            inputSchema: ['type' => 'object', 'properties' => [], 'required' => []],
+        );
+
+        $m = new \ReflectionMethod($agente, 'toolsOfThisApp');
+        $registro = $m->invoke($agente, [
+            $sintetica('agent:answer'),
+            $sintetica('agent:mode'),
+            $sintetica('agent:discard'),
+            $sintetica('cuaderno:apunte'),
+        ], false);
+
+        self::assertInstanceOf(\Milpa\ToolRuntime\ToolRegistry::class, $registro);
+        $nombres = array_column($registro->getToolSummaries(), 'name');
+
+        // EL CONTROL, primero: si la inocua tampoco llegó, «retiradas» significaba «ignoradas» y el
+        // resto de esta prueba no mediría el filtro sino que `$extra` se descarta.
+        self::assertContains('cuaderno_apunte', $nombres, 'las sintéticas sí entran al catálogo');
+
+        // Y ahora la aserción MIDE, porque su aguja estaba presente antes del filtro.
+        self::assertNotContains('agent_answer', $nombres, 'la respuesta a la pausa es del humano');
+        self::assertNotContains('agent_mode', $nombres, 'la autonomía la concede quien gobierna');
+        self::assertNotContains('agent_discard', $nombres, 'y un padre no cierra la sesión pausada de su hijo');
+    }
+
+    /**
      * LAS OPERACIONES QUE ADJUDICAN SESIONES NO SON HERRAMIENTAS DEL ADJUDICADO.
      *
      * `agent:answer` y `agent:mode` estaban en el catálogo del propio agente, con el mensaje de pausa
@@ -194,6 +271,14 @@ final class RequestClassifierTest extends TestCase
      */
     public function testSessionAdjudicationOperationsAreNotToolsOfTheAgent(): void
     {
+        OptIn::needs(\Milpa\Agent\SessionStore::class);
+
+        // SIN `needs()` A PROPÓSITO, Y CUESTA DECIRLO (evidence/0105). El parche que gateó los 35
+        // métodos de frontera le puso `needs()` encima a ESTE, que ya estaba partido con `has()` —y
+        // con eso el método saltaba entero en un recién nacido, tirando justo las dos aserciones de
+        // piso que evidence/0092 existía para conservar. Es la lección de evidence/0080 otra vez:
+        // una regla aplicada en masa comete errores en masa. El piso va abajo, fuera de toda guarda.
+
         $raiz = \dirname(__DIR__, 2);
         /** @var array{container: \Milpa\Interfaces\Di\DIContainerInterface, plugins: list<class-string>} $boot */
         $boot = require $raiz . '/config/boot.php';
@@ -214,8 +299,18 @@ final class RequestClassifierTest extends TestCase
         self::assertInstanceOf(\Milpa\ToolRuntime\ToolRegistry::class, $registry);
         $nombres = array_column($registry->getToolSummaries(), 'name');
 
-        self::assertNotContains('agent_answer', $nombres, 'la respuesta a la pausa es del humano');
-        self::assertNotContains('agent_mode', $nombres, 'la autonomía la concede quien gobierna, no quien es gobernado');
+        // LAS DOS NEGATIVAS SE FUERON, Y NO POR SOBRAR (evidence/0126).
+        //
+        // evidence/0107 midió que `assertNotContains('agent_answer')` y su gemela **no podían fallar**
+        // aquí: en un recién nacido no hay `agent_answer` porque falta `milpa/agent`, no porque el
+        // filtro lo retire — y evidence/0106 lo probó borrando el filtro sin que el arm pelón se
+        // moviera. Lo que las reemplaza no es un `has()`: es
+        // `testTheWithdrawalFilterIsMeasuredWithNoAgentSurfaceInstalled`, que FABRICA las adjudicantes
+        // y por eso su aguja sí puede estar presente. Dejarlas aquí sería medir dos veces lo que una
+        // mide mejor.
+        //
+        // Lo que queda es la lectura de sesión, que sólo existe con almacén — frontera entera, así que
+        // el método sube a `needs()` y su skip lo paga el presupuesto, con esta acta como razón.
         self::assertContains('agent_sessions', $nombres, 'las lecturas de sesión sí se quedan');
     }
 }

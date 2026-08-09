@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Http;
 
+use App\Tests\Support\OptIn;
 use App\Plugins\OperationsHttpPlugin\OperationsHttpPlugin;
 use Milpa\Command\Operation;
 use Milpa\Console\Http\HttpProjector;
@@ -109,12 +110,25 @@ final class OperationsHttpTest extends TestCase
     /**
      * Lo nombrado sí se publica, con el verbo y la ruta que el átomo declara.
      *
-     * Se usa `validate` y no una operación de plugins porque las SIETE de `milpa/plugin` declaran
-     * scopes: en una app sin identidad, ninguna de ellas se puede publicar — y eso es la compuerta
-     * funcionando, no un defecto de esta prueba.
+     * Se usa `validate` y no una operación de plugins porque las de `milpa/plugin` declaran scopes:
+     * en una app sin identidad, ninguna se puede publicar — y eso es la compuerta funcionando, no un
+     * defecto de esta prueba.
+     *
+     * ── POR QUÉ ESTOS TRES CASOS SÍ SON FRONTERA (evidence/0103) ─────────────────────────────────
+     *
+     * decisions/0013 los listó como PISO, diciendo que «su fixture está mal, no la app». Se midió y
+     * es al revés. El plugin arma su universo con `Operations::declared()` —sólo lo que declaran los
+     * PLUGINS de la app, no lo que trae el runtime—, así que `capabilities` y las demás sin scopes
+     * NO son candidatas. En un recién nacido quedan ocho, y las ocho declaran scopes.
+     *
+     * O sea: para medir «lo expuesto obtiene su ruta» hace falta una operación declarada por un
+     * plugin y SIN scopes, y la única que existe la trae `milpa/devtools`. El autor original eligió
+     * bien; lo que estaba mal era la clasificación.
      */
     public function testAnExposedOperationGetsItsRoute(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $this->expose('validate');
 
         $rutas = $this->plugin()->routes();
@@ -134,6 +148,8 @@ final class OperationsHttpTest extends TestCase
      */
     public function testAnUnknownOperationNameIsSaidAtBootWithTheOnesThatExist(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $this->expose('validat');
 
         $this->expectException(\RuntimeException::class);
@@ -152,6 +168,22 @@ final class OperationsHttpTest extends TestCase
      * `HttpProjector` ya se niega en tiempo de petición, y eso está bien como red. Pero aquí se puede
      * saber antes —la lista de expuestos se conoce al arrancar— así que el error le llega a quien
      * configuró en vez de a quien llamó.
+     */
+    /**
+     * ── ESTE CASO ES EL PISO DE LA GUARDA, Y F2 LO CONFIRMÓ (evidence/0109) ──────────────────────
+     *
+     * El mecanismo tiene dos caminos que caen en lados opuestos de la compuerta de opt-ins:
+     *
+     *   «lo expuesto obtiene su ruta»  necesita una operación SIN scopes → sólo la traen las dev tools
+     *   «sin política se RECHAZA»      necesita una CON scopes y ninguna política → un recién nacido
+     *                                  tiene ocho y cero, así que lo mide de sobra
+     *
+     * evidence/0109 fue a construirle un piso a este mecanismo **y ya estaba aquí**. La mutación M5′
+     * —destripar `assertGuarded()`— pone rojo el arm PELÓN, y esta prueba es una de las dos que la ven.
+     *
+     * Lo que sí quedó medido es que la M5 original de decisions/0013 —registrar la política bajo otra
+     * llave— **apunta a código que no corre en una app pelona**: ese registro vive dentro de una guarda
+     * de opt-ins. Su verde pelón no era el gate escondiendo piso; era una mutación mal apuntada.
      */
     public function testAProtectedOperationRefusesToBePublishedWithoutAPolicy(): void
     {
@@ -191,6 +223,8 @@ final class OperationsHttpTest extends TestCase
      */
     public function testTheProjectorIsRegisteredSoTheRoutesCanResolve(): void
     {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
         $this->expose('validate');
 
         $plugin = $this->plugin();

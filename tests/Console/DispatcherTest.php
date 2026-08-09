@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Console;
 
+use App\Tests\Support\OptIn;
 use Milpa\AppRuntime\Console\Application;
 use PHPUnit\Framework\TestCase;
 
@@ -84,11 +85,13 @@ final class DispatcherTest extends TestCase
      */
     public function testRequiredInputIsPositional(): void
     {
-        $r = $this->correr('validate', 'HelloPlugin', '--json');
+        // RE-VEHICULADO DE `validate` A `plugins:show` (evidence/0103): la propiedad es PISO y
+        // montarla sobre las dev tools la volvía frontera sin necesidad.
+        $r = $this->correr('plugins:show', 'HelloPlugin', '--json');
 
-        /** @var array{result: array{target: string}} $json */
+        /** @var array{result: array{name: string}} $json */
         $json = json_decode(trim($r['texto']), true, 512, JSON_THROW_ON_ERROR);
-        self::assertSame('HelloPlugin', $json['result']['target']);
+        self::assertSame('HelloPlugin', $json['result']['name']);
     }
 
     /**
@@ -99,17 +102,41 @@ final class DispatcherTest extends TestCase
      */
     public function testAKebabFlagReachesTheSchemaAsSnakeCase(): void
     {
-        $r = $this->correr('make', 'entity', 'HelloPlugin', 'CosaQueNoDebeExistir', '--fields=t:string', '--dry-run', '--json');
+        // RE-VEHICULADO DE `make --dry-run` A `capabilities:enable --dry-run` (evidence/0103).
+        //
+        // La propiedad es que `--dry-run` en la terminal llegue al esquema como `dry_run`, y eso es
+        // PISO: `capabilities:enable` existe en una app pelona y devuelve el token traducido.
+        //
+        // ── LA ENTRADA SE DERIVA DE LA APP, Y ESO NO ES ADORNO ───────────────────────────────────
+        //
+        // La primera versión clavaba `milpa/agent`, y con `milpa/agent` YA INSTALADO la operación toma
+        // la rama «already installed» que no devuelve `dry_run` en absoluto: verde en un recién nacido
+        // y ROJA en una app con todo. Lo cachó el arm de F1 (decisions/0013), no la lectura. Así que
+        // la capacidad la elige la app: `available` es, por definición, lo que NO está instalado.
+        $disponibles = json_decode(trim($this->correr('capabilities', '--json')['texto']), true, 512, JSON_THROW_ON_ERROR);
+        /** @var list<array<string, mixed>|string> $candidatas */
+        $candidatas = $disponibles['result']['available'] ?? [];
 
-        /** @var array{result: array{ok: bool, files: list<array{path: string, action: string}>}} $json */
+        if ($candidatas === []) {
+            self::markTestSkipped('esta app no reporta ninguna capacidad disponible: la rama de `dry_run` no es alcanzable aquí');
+        }
+
+        // `available` TRAE FILAS, NO CADENAS — y el nombre instalable vive en `package`. Tomar la fila
+        // completa mandó «Array» como capacidad y la operación contestó «unknown capability». Es el
+        // mismo detalle que evidence/0099 midió del otro lado: la colección trae filas y la llave
+        // importa, aunque el mensaje de error de al lado imprima cadenas.
+        $primera = $candidatas[0];
+        $capacidad = \is_array($primera) ? (string) ($primera['package'] ?? $primera['id'] ?? '') : (string) $primera;
+        self::assertNotSame('', $capacidad, 'no se pudo leer el nombre instalable de la primera disponible');
+
+        $r = $this->correr('capabilities:enable', $capacidad, '--dry-run', '--json');
+
+        /** @var array{result: array{ok: bool, dry_run: bool, command: string}} $json */
         $json = json_decode(trim($r['texto']), true, 512, JSON_THROW_ON_ERROR);
 
         self::assertTrue($json['result']['ok'], $r['texto']);
-        self::assertNotSame([], $json['result']['files']);
-        foreach ($json['result']['files'] as $archivo) {
-            self::assertSame('would-create', $archivo['action']);
-            self::assertFileDoesNotExist($archivo['path']);
-        }
+        self::assertTrue($json['result']['dry_run'], 'el kebab `--dry-run` no llegó como `dry_run`');
+        self::assertStringContainsString('composer require', $json['result']['command']);
     }
 
     /**
@@ -166,6 +193,8 @@ final class DispatcherTest extends TestCase
      */
     public function testWithIdentityWiredAProtectedOperationCanBeExposed(): void
     {
+        OptIn::needs(\Milpa\Auth\AuthContext::class);
+
         $http = \dirname(__DIR__, 2) . '/config/http.php';
         $original = (string) file_get_contents($http);
         file_put_contents($http, "<?php\n\nreturn ['expose' => ['plugins.list']];\n");
@@ -199,6 +228,8 @@ final class DispatcherTest extends TestCase
     /** `coa chat` igual: un frame con la invitación, y sale. */
     public function testTheChatPrintsOneFrameWhenThereIsNoTerminal(): void
     {
+        OptIn::needs(\Milpa\AiGateway\LlmService::class);
+
         $r = $this->correr('chat');
 
         self::assertSame(0, $r['codigo']);
@@ -214,6 +245,8 @@ final class DispatcherTest extends TestCase
      */
     public function testTheChatAsksThroughTheSameAgentOperation(): void
     {
+        OptIn::needs(\Milpa\AiGateway\LlmService::class);
+
         $app = new Application(\dirname(__DIR__, 2));
         $metodo = new \ReflectionMethod($app, 'preguntarAlAgente');
 
