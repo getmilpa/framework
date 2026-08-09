@@ -30,6 +30,15 @@ return [
     // enseñen el camino— sería justo la que no lo tendría (ADR-0040).
     Milpa\AppRuntime\Operations\CapabilityOperations::class,
 
+    // THE CONSTITUTION SITS NEXT TO THE CATALOGUE, ungated for the same reason: the newborn —
+    // the app that has not been founded yet — is exactly the one that needs the system to teach
+    // it the rite. `foundation` reads (and teaches when there is nothing); `foundation:found`
+    // writes the constitution and its acta, once (greenhouse decisions/0004).
+    //
+    // On an app-runtime older than the group, `class_exists()` above skips it and the app keeps
+    // booting — the documented degradation of this list, exercised on purpose.
+    Milpa\AppRuntime\Operations\FoundationOperations::class,
+
     Milpa\DevTools\Operations\DevToolsOperations::class,
 
     // El agente de esta app: `coa agent "..."`. Ve las mismas operaciones que un cliente MCP, y sin
