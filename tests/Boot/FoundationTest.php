@@ -39,19 +39,44 @@ final class FoundationTest extends TestCase
     }
 
     /**
-     * The newborn is EXPLICITLY unfounded: domain and founding date are null, not absent — an
-     * unfounded app asked for domain work must found first, and detecting that state has to be
-     * trivial and honest.
+     * The constitution says which of the two states it is in, EXPLICITLY, in both directions.
+     *
+     * A newborn is unfounded with `domain` and `founded_at` present and null — not absent — because
+     * an app asked for domain work has to detect that state trivially and honestly, and a missing
+     * key and a null one are different facts.
+     *
+     * ── WHY THIS LOOKS AT BOTH STATES AND NOT ONLY THE FIRST ────────────────────────────────────
+     *
+     * The previous version asserted `domain === null` flatly, which turned USING the app into
+     * breaking its suite. The first command a newborn is taught is `foundation:found`; the moment
+     * anyone ran it — that is, the moment they did what the system asked — their `phpunit` went red
+     * for having founded. A test that only tolerates the factory state teaches the user that the app
+     * broke when what they did was start using it.
+     *
+     * What matters is not that the domain is null. It is that the file is never AMBIGUOUS about
+     * which state it is in. So the pair is asserted in both directions — unfounded, both null;
+     * founded, both present and neither empty — and no in-between passes.
      */
-    public function testTheNewbornSaysItIsNotFoundedYet(): void
+    public function testTheConstitutionSaysWhichStateItIsIn(): void
     {
         $constitution = json_decode((string) file_get_contents(self::FOUNDATION), true);
         self::assertIsArray($constitution);
 
         self::assertArrayHasKey('domain', $constitution);
-        self::assertNull($constitution['domain']);
         self::assertArrayHasKey('founded_at', $constitution);
-        self::assertNull($constitution['founded_at']);
+
+        if ($constitution['founded_at'] === null) {
+            self::assertNull(
+                $constitution['domain'],
+                'an app with no founding date must not carry a domain: that is neither state',
+            );
+
+            return;
+        }
+
+        self::assertIsString($constitution['domain']);
+        self::assertNotSame('', trim($constitution['domain']), 'a founded app names its domain');
+        self::assertIsString($constitution['founded_at']);
     }
 
     /** No app is born lawless: even unfounded, the authorities default to the human. */
