@@ -14,7 +14,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Support;
 
-use App\Tests\Support\OptIn;
 use Milpa\AppRuntime\Operations\AgentOperations;
 use Milpa\AppRuntime\Support\Operations;
 use Milpa\Container\DIContainer;
