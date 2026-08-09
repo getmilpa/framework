@@ -409,6 +409,30 @@ $ php bin/coa capabilities
 
 It lists what is installed, what is available, and the exact command that grows into each one.
 
+## One atom is offered. The rest are substrate
+
+«Every capability is a declared `Operation`» is true, and read as a description of the whole system
+it is misleading. The Operation is the atom **you** declare. Underneath it the runtime stands on four
+more primitives, and none of them is something you write — which is a choice, not an omission, and it
+belongs here rather than in the surprise three months from now.
+
+| primitive | what it is | can you declare one? |
+|---|---|---|
+| **Operation** | a capability: name, schema, handler, and what it may do at worst | **yes — this is the extension point** |
+| **Effect ceiling** | `mutation × externality × reversibility × authority`, plus what escalates it and how it rolls back | yes, as part of an Operation |
+| **Gate** | what withholds a tool until a condition holds: an unnamed target, an unmet prerequisite, an unfounded app | **no — there is no public contract** |
+| **Event** | the append-only stream the agent's session is rebuilt from | you can implement the store; it is not an app-level primitive |
+| **Foundation** | the constitution and the decisions that amend it — one per app, written by its rite | no, but you **run** it: `foundation`, `foundation:found` |
+
+The line between the first two rows and the last three is *who acts*. An Operation is something a
+human or an agent decides to do, so it is offered, projected and gated. A Gate is something the
+**system** does, and offering it as a capability would mean shipping an app whose agent can widen the
+rules it runs under. That is the same reason `agent:answer` and `agent:mode` are filtered out of the
+catalogue the agent itself receives: an authority that can rewrite its own limit is not an authority.
+
+The honest consequence: **if you are looking for the list of things this runtime is made of, it is
+five rows and not one.** If you are looking for the list of things you write, it is the first row.
+
 ## License
 
 Apache-2.0 © Rodrigo Vicente - TeamX Agency
