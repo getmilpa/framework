@@ -100,8 +100,19 @@ final class OperationsTest extends TestCase
 
         // `verify` y `lock` están porque `config/boot.php` registra un `AppRoot`. Sin él no
         // aparecerían —el paquete no adivina dónde vive la app— y esta lista lo mediría.
-        foreach (['plugins.list', 'plugins.deps', 'plugins.simulate', 'plugins.verify', 'plugins.lock', 'validate', 'make', 'agent'] as $esperada) {
+        foreach (['plugins.list', 'plugins.deps', 'plugins.simulate', 'plugins.verify', 'plugins.lock'] as $esperada) {
             self::assertContains($esperada, $nombres);
+        }
+
+        // FRONTERA, PARTIDA DEL PISO (evidence/0103). `validate` y `make` los publica `milpa/devtools`
+        // y `agent` necesita la capacidad de agente: exigirlos junto con los `plugins.*` hacía que la
+        // medición del `AppRoot` —que es el motivo de esta prueba— se perdiera en un recién nacido.
+        if (OptIn::has(\Milpa\DevTools\Doctor\Repair::class)) {
+            self::assertContains('validate', $nombres);
+            self::assertContains('make', $nombres);
+        }
+        if (OptIn::has(\Milpa\AiGateway\LlmService::class)) {
+            self::assertContains('agent', $nombres);
         }
     }
 
@@ -126,8 +137,16 @@ final class OperationsTest extends TestCase
             $registry->getToolDefinitions(),
         );
 
+        // PISO: que el agente vea el catálogo de esta app se mide con cero opt-ins.
         self::assertContains('plugins_list', $herramientas);
-        self::assertNotContains('agent', $herramientas, 'un agente que se ofrece a sí mismo es un bucle que nadie pidió');
+
+        // FRONTERA (evidence/0107 lo midió vacuo, evidence/0126 lo movió). En un recién nacido `agent`
+        // no está porque falta `milpa/ai-gateway`, no porque el filtro lo retire: la aserción pasaba
+        // sin poder fallar. Con el opt-in puesto SÍ mide, así que no sobra — estaba del lado
+        // equivocado de la compuerta.
+        if (OptIn::has(\Milpa\AiGateway\LlmService::class)) {
+            self::assertNotContains('agent', $herramientas, 'un agente que se ofrece a sí mismo es un bucle que nadie pidió');
+        }
     }
 
     /**
@@ -218,6 +237,8 @@ final class OperationsTest extends TestCase
      */
     public function testTheJudgeIsTheSameModelThatRunsTheAgent(): void
     {
+        OptIn::needs(\Milpa\AiGateway\LlmService::class);
+
         $contenedor = new DIContainer();
         $contenedor->registerService(\Milpa\Runtime\Config::class, new \Milpa\Runtime\Config([
             'agent' => ['baseUrl' => 'https://llama.local', 'model' => 'qwen3-coder:30b'],
@@ -269,6 +290,8 @@ final class OperationsTest extends TestCase
      */
     public function testTheSyntacticFloorStaysUnderneath(): void
     {
+        OptIn::needs(\Milpa\AiGateway\SecondOpinionGate::class);
+
         $piso = new class () implements \Milpa\AiGateway\ToolCallGate {
             public function refuse(string $tool, array $arguments): ?string
             {
@@ -307,6 +330,8 @@ final class OperationsTest extends TestCase
      */
     public function testWrappingTheGateDoesNotSilenceTheToolRecorder(): void
     {
+        OptIn::needs(\Milpa\AiGateway\McpClientService::class);
+
         $registro = [];
         $piso = new class ($registro) implements \Milpa\AiGateway\ToolCallGate, \Milpa\AiGateway\ToolCallRecorder {
             /** @param list<string> $registro */
