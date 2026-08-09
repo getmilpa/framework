@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.2](https://github.com/getmilpa/framework/compare/v0.23.1...v0.23.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* **tests:** the agent helper declares what makes the agent operation exist ([6337db5](https://github.com/getmilpa/framework/commit/6337db514b68196973760bb66c956635176372f1))
+
 ## [0.23.1](https://github.com/getmilpa/framework/compare/v0.23.0...v0.23.1) (2026-08-09)
 
 
