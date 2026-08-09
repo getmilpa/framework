@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.2](https://github.com/getmilpa/framework/compare/v0.22.1...v0.22.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* **tests:** the newborn suite is green, and every skip teaches its own install ([2af466e](https://github.com/getmilpa/framework/commit/2af466ee9089f884ab36c75eb6ea74d21505f9ff))
+* **welcome:** the first-five-minutes page recommended five commands that do not exist ([a159479](https://github.com/getmilpa/framework/commit/a159479ac34b17d0c606052e2a7d6ada58f5b0ed))
+
 ## [0.22.1](https://github.com/getmilpa/framework/compare/v0.22.0...v0.22.1) (2026-08-07)
 
 
