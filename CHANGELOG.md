@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.3](https://github.com/getmilpa/framework/compare/v0.23.2...v0.23.3) (2026-08-11)
+
+
+### Bug Fixes
+
+* accept milpa/app-runtime ^0.12 so a new app receives the withdrawal-naming fix ([#51](https://github.com/getmilpa/framework/issues/51)) ([9b47010](https://github.com/getmilpa/framework/commit/9b4701043f19feeacaab9fcf455badf8d5022345))
+
 ## [0.23.2](https://github.com/getmilpa/framework/compare/v0.23.1...v0.23.2) (2026-08-09)
 
 
