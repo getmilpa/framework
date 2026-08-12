@@ -154,7 +154,7 @@ final class ApplicationTest extends TestCase
     {
         $r = $this->coa('no-existe-esto');
 
-        self::assertStringContainsString('no existe el comando', $r['texto']);
+        self::assertStringContainsString('no such command', $r['texto']);
         self::assertStringContainsString('plugins:list', $r['texto']);
     }
 
