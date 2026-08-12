@@ -158,7 +158,7 @@ final class DispatcherTest extends TestCase
     {
         $r = $this->correr('esto-no-existe');
 
-        self::assertStringContainsString('no existe el comando', $r['texto']);
+        self::assertStringContainsString('no such command', $r['texto']);
         self::assertStringContainsString('plugins:list', $r['texto'], 'y enseña lo que sí hay');
     }
 
