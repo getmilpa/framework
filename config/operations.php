@@ -53,4 +53,16 @@ return [
     // Los tokens con que alguien se identifica ante esta app por HTTP. Sólo terminal: quien puede
     // acuñar un token puede acuñar uno con todos los scopes.
     Milpa\AppRuntime\Operations\TokenOperations::class,
+
+    // LA CONFIGURACIÓN DEL AGENTE, por el camino gobernado en vez de a mano (greenhouse
+    // decisions/0027, evidence/0145). `config` lee lo que esta app corre y dice qué llaves declaran
+    // DOS archivos a la vez; `config:set` escribe una llave sin que nadie tenga que saber dónde vive
+    // ni cómo se anida — la misma razón por la que `make` andamia un controller.
+    //
+    // ESCRIBIR CARGA UN TECHO PRESTADO: el de lo más pesado que el criterio editado puede permitir,
+    // porque quien edita al juez no pesa menos que lo juzgado. Construida desde esta lista no recibe
+    // catálogo, así que lo presta de uno vacío — y GOV-05 hace que lo no clasificado cuente como el
+    // máximo de cada eje. Pide consentimiento en vez de saltárselo, que es el lado correcto para
+    // equivocarse; darle el catálogo real es otra rebanada, y está declarada.
+    Milpa\AppRuntime\Operations\ConfigOperations::class,
 ];
