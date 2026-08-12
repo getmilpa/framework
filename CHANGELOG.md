@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.4](https://github.com/getmilpa/framework/compare/v0.23.3...v0.23.4) (2026-08-12)
+
+
+### Bug Fixes
+
+* accept milpa/plugin ^0.11, and follow app-runtime's message out of Spanish ([#53](https://github.com/getmilpa/framework/issues/53)) ([7b82b10](https://github.com/getmilpa/framework/commit/7b82b103b99b1f58339c33e0585e9fd3730a500b))
+
 ## [0.23.3](https://github.com/getmilpa/framework/compare/v0.23.2...v0.23.3) (2026-08-11)
 
 
