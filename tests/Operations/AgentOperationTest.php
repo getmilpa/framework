@@ -1108,8 +1108,10 @@ final class AgentOperationTest extends TestCase
         // NO SE LE ORDENA LO QUE NO SE LE DIO. La orden nombra `plan` y `todo`; en un app donde no
         // se registran, no viajan, y pedirlas era una orden imposible que la medición leía como
         // desobediencia (greenhouse evidence/0172, app-runtime v0.25.0).
-        $sinHerramientas = $this->promptCon([], herramientas: []);
-        self::assertStringNotContainsString('Escribe un plan', $sinHerramientas, 'sin las herramientas, no se ordena');
+        if ((new \ReflectionMethod(AgentOperations::class, 'systemPrompt'))->getNumberOfParameters() > 0) {
+            $sinHerramientas = $this->promptCon([], herramientas: []);
+            self::assertStringNotContainsString('Escribe un plan', $sinHerramientas, 'sin las herramientas, no se ordena');
+        }
 
         $puntero = $this->promptCon(['architectureSummary' => 'pointer']);
         self::assertNotSame($conPlan, $puntero, 'el modo cambia lo que se manda');
@@ -1136,10 +1138,19 @@ final class AgentOperationTest extends TestCase
         );
 
         $operaciones = new class ($contenedor) extends AgentOperations {
-            /** @param list<string> $herramientas las que de verdad viajan en la corrida */
+            /**
+             * EL ESQUELETO CONVIVE CON EL VENDOR QUE SU DUEÑO TENGA, no con el que su manifiesto
+             * pide. `systemPrompt()` ganó un parámetro en app-runtime v0.25.0, y llamarlo con
+             * argumentos contra un vendor anterior es un fatal en CADA corrida — el mismo modo de
+             * falla que este archivo ya documenta para `planBoard`.
+             *
+             * @param list<string> $herramientas las que de verdad viajan en la corrida
+             */
             public function prompt(array $herramientas = []): string
             {
-                return $this->systemPrompt($herramientas);
+                $recibeHerramientas = (new \ReflectionMethod($this, 'systemPrompt'))->getNumberOfParameters() > 0;
+
+                return $recibeHerramientas ? $this->systemPrompt($herramientas) : $this->systemPrompt();
             }
         };
 
