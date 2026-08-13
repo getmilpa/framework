@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.24.0](https://github.com/getmilpa/framework/compare/v0.23.4...v0.24.0) (2026-08-13)
+
+
+### Features
+
+* the agent configuration is an operation of this app, not a file to hand-edit ([#57](https://github.com/getmilpa/framework/issues/57)) ([ee96d08](https://github.com/getmilpa/framework/commit/ee96d082fdab92cf948dc58ec47896395d254bc4))
+
+
+### Bug Fixes
+
+* accept the versions where consent is decided for the call ([#55](https://github.com/getmilpa/framework/issues/55)) ([1fbd06a](https://github.com/getmilpa/framework/commit/1fbd06a38a02c5da99021f7d0ad26b9f98d10706))
+
 ## [0.23.4](https://github.com/getmilpa/framework/compare/v0.23.3...v0.23.4) (2026-08-12)
 
 
