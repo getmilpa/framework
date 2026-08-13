@@ -1102,8 +1102,14 @@ final class AgentOperationTest extends TestCase
         self::assertStringNotContainsString('Escribe un plan', $sinNada, 'apagada, la instrucción no va');
 
         $conPlan = $this->promptCon([]);
-        self::assertStringContainsString('Escribe un plan', $conPlan, 'y por default sí — es lo ya medido');
+        self::assertStringContainsString('Escribe un plan', $conPlan, 'con las herramientas viajando, la orden va');
         self::assertStringContainsString('sigue ésos', $conPlan, 'incluido el renglón de continuar el plan viejo');
+
+        // NO SE LE ORDENA LO QUE NO SE LE DIO. La orden nombra `plan` y `todo`; en un app donde no
+        // se registran, no viajan, y pedirlas era una orden imposible que la medición leía como
+        // desobediencia (greenhouse evidence/0172, app-runtime v0.25.0).
+        $sinHerramientas = $this->promptCon([], herramientas: []);
+        self::assertStringNotContainsString('Escribe un plan', $sinHerramientas, 'sin las herramientas, no se ordena');
 
         $puntero = $this->promptCon(['architectureSummary' => 'pointer']);
         self::assertNotSame($conPlan, $puntero, 'el modo cambia lo que se manda');
@@ -1117,7 +1123,11 @@ final class AgentOperationTest extends TestCase
      *
      * @param array<string, mixed> $agente
      */
-    private function promptCon(array $agente): string
+    /**
+     * @param array<string, mixed> $agente
+     * @param list<string>         $herramientas
+     */
+    private function promptCon(array $agente, array $herramientas = ['plan', 'todo']): string
     {
         $contenedor = new \Milpa\Container\DIContainer();
         $contenedor->registerService(
@@ -1126,13 +1136,14 @@ final class AgentOperationTest extends TestCase
         );
 
         $operaciones = new class ($contenedor) extends AgentOperations {
-            public function prompt(): string
+            /** @param list<string> $herramientas las que de verdad viajan en la corrida */
+            public function prompt(array $herramientas = []): string
             {
-                return $this->systemPrompt();
+                return $this->systemPrompt($herramientas);
             }
         };
 
-        return $operaciones->prompt();
+        return $operaciones->prompt($herramientas);
     }
 
     /**
