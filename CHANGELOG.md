@@ -1,5 +1,53 @@
 # Changelog
 
+
+## [0.26.1](https://github.com/getmilpa/framework/releases/tag/v0.26.1) (2026-08-13)
+
+Accepts `app-runtime ^0.20`, where what an agent configuration key looks like has a single definition (`AgentKeyScan`) instead of two copies that disagreed on whether a key may start with a digit.
+
+## [0.26.0](https://github.com/getmilpa/framework/releases/tag/v0.26.0) (2026-08-12)
+
+`config` names the agent configuration keys that exist, each with its type and what it decides.
+
+The code reads seventeen and the template's comment documents four, so `config:set` would take any key without telling the caller which ones the app understands. A rail in `app-runtime` checks the declaration against the `Config::get('agent.*')` call sites in both directions, so it does not become the next stale comment.
+
+## [0.25.1](https://github.com/getmilpa/framework/releases/tag/v0.25.1) (2026-08-12)
+
+`config:set` derives its ceiling from what this app can actually do, instead of assuming the maximum.
+
+Built from `config/operations.php` a provider gets no catalogue, so it borrowed from an empty one and GOV-05 made that the maximum of every axis. `app-runtime v0.18.0` hands the finished catalogue back in a second pass:
+
+```
+mutation Persistent · externality ThirdParty · reversibility ManualRecovery
+authority Privileged · subject Executable        — all five strictly below the maximum
+```
+
+Consent does not change; `subject` and `authority` are exactly what S2 demands. What changes is that the number is derived, so it drops when the app is milder and never drops while it is assumed.
+
+## [0.25.0](https://github.com/getmilpa/framework/releases/tag/v0.25.0) (2026-08-12)
+
+**The agent configuration is an operation of the app, not a file to hand-edit.**
+
+`config` reads what the app runs on and names the keys two files declare at once. `config:set` writes one key through the governed path, so nobody has to know where the configuration lives or how it nests — the same reason `make` scaffolds a controller instead of teaching the layout.
+
+Writing carries a **borrowed ceiling** (greenhouse `decisions/0027`): the heaviest thing the criterion it edits can permit, because whoever edits the judge does not weigh less than what the judge governs. Built from the operations list it receives no catalogue, so it borrows from an empty one — and GOV-05 makes the unclassified the maximum of every dimension. It asks for consent instead of skipping it, which is the right side to be wrong on.
+
+## [0.24.0](https://github.com/getmilpa/framework/releases/tag/v0.24.0) (2026-08-12)
+
+**The rehearsal no longer weighs like the install.**
+
+Wiring S2 made `capabilities:enable --dry-run --json` ask for a signature, and the prompt landed where JSON was expected — a rehearsal carrying the same ceiling as the real install, because S2 judged the *operation* and not the *invocation*.
+
+Three releases answer it, and all three arrive here:
+
+- `command v0.8.0` — the descent field: an argument that lowers a ceiling, carrying its reason
+- `app-runtime v0.16.1` — declares one on `capabilities:enable`, with two measurements behind it
+- `console v0.9.1` — resolves a ceiling **for the call**, the reader that did not exist
+
+The middle one had been declared and read nowhere. Greenhouse `evidence/0152` measured the field inert before console grew its reader.
+
+Also brings wired S2 itself: an operation whose ceiling reaches `Executable` + `Privileged` asks for consent whether or not it set a flag by hand.
+
 ## [0.23.4](https://github.com/getmilpa/framework/compare/v0.23.3...v0.23.4) (2026-08-12)
 
 
