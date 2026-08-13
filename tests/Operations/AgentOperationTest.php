@@ -591,9 +591,19 @@ final class AgentOperationTest extends TestCase
 
         $r = $this->llamar($agente, ['prompt' => 'hola']);
 
+        // TODA CORRIDA ABRE SESIÓN, y es un cambio de propiedad, no un detalle.
+        //
+        // Antes esto afirmaba lo contrario: sin `--session` no se abría ninguna y el agente corría
+        // sin dejar rastro. `plan` y `todo` se registran ATADAS a una sesión, así que aquel diseño
+        // dejaba al PRIMER turno sin poder planear — justo el turno donde un plan sirve— y el prompt
+        // se lo ordenaba igual (greenhouse evidence/0172, app-runtime v0.26.0).
+        //
+        // Rod, 2026-08-13: «el agente debe planear y el plan debe sobrevivir al agente, entre
+        // sesiones, entre compactaciones… no es opcional planear.» El precio es que cada corrida deja
+        // sesión en el almacén, y es lo que la vuelve inspeccionable con `agent:sessions`.
         self::assertTrue($r['ok']);
-        self::assertArrayNotHasKey('session', $r, 'no hay sesión que reportar');
-        self::assertSame([], $almacen->ids(), 'y no se abrió ninguna');
+        self::assertArrayHasKey('session', $r, 'toda corrida reporta su sesión');
+        self::assertCount(1, $almacen->ids(), 'y abre exactamente una');
     }
 
     /**
@@ -1102,8 +1112,16 @@ final class AgentOperationTest extends TestCase
         self::assertStringNotContainsString('Escribe un plan', $sinNada, 'apagada, la instrucción no va');
 
         $conPlan = $this->promptCon([]);
-        self::assertStringContainsString('Escribe un plan', $conPlan, 'y por default sí — es lo ya medido');
+        self::assertStringContainsString('Escribe un plan', $conPlan, 'con las herramientas viajando, la orden va');
         self::assertStringContainsString('sigue ésos', $conPlan, 'incluido el renglón de continuar el plan viejo');
+
+        // NO SE LE ORDENA LO QUE NO SE LE DIO. La orden nombra `plan` y `todo`; en un app donde no
+        // se registran, no viajan, y pedirlas era una orden imposible que la medición leía como
+        // desobediencia (greenhouse evidence/0172, app-runtime v0.25.0).
+        if ((new \ReflectionMethod(AgentOperations::class, 'systemPrompt'))->getNumberOfParameters() > 0) {
+            $sinHerramientas = $this->promptCon([], herramientas: []);
+            self::assertStringNotContainsString('Escribe un plan', $sinHerramientas, 'sin las herramientas, no se ordena');
+        }
 
         $puntero = $this->promptCon(['architectureSummary' => 'pointer']);
         self::assertNotSame($conPlan, $puntero, 'el modo cambia lo que se manda');
@@ -1117,7 +1135,11 @@ final class AgentOperationTest extends TestCase
      *
      * @param array<string, mixed> $agente
      */
-    private function promptCon(array $agente): string
+    /**
+     * @param array<string, mixed> $agente
+     * @param list<string>         $herramientas
+     */
+    private function promptCon(array $agente, array $herramientas = ['plan', 'todo']): string
     {
         $contenedor = new \Milpa\Container\DIContainer();
         $contenedor->registerService(
@@ -1126,13 +1148,23 @@ final class AgentOperationTest extends TestCase
         );
 
         $operaciones = new class ($contenedor) extends AgentOperations {
-            public function prompt(): string
+            /**
+             * EL ESQUELETO CONVIVE CON EL VENDOR QUE SU DUEÑO TENGA, no con el que su manifiesto
+             * pide. `systemPrompt()` ganó un parámetro en app-runtime v0.25.0, y llamarlo con
+             * argumentos contra un vendor anterior es un fatal en CADA corrida — el mismo modo de
+             * falla que este archivo ya documenta para `planBoard`.
+             *
+             * @param list<string> $herramientas las que de verdad viajan en la corrida
+             */
+            public function prompt(array $herramientas = []): string
             {
-                return $this->systemPrompt();
+                $recibeHerramientas = (new \ReflectionMethod($this, 'systemPrompt'))->getNumberOfParameters() > 0;
+
+                return $recibeHerramientas ? $this->systemPrompt($herramientas) : $this->systemPrompt();
             }
         };
 
-        return $operaciones->prompt();
+        return $operaciones->prompt($herramientas);
     }
 
     /**
@@ -1260,9 +1292,13 @@ final class AgentOperationTest extends TestCase
         /** @var array{ok: bool, error?: string, hint?: string} $r */
         $r = $handler(['prompt' => 'revisa', 'deny' => 'make']);
 
-        self::assertFalse($r['ok']);
-        self::assertStringContainsString('without a session', (string) ($r['error'] ?? ''));
-        self::assertStringContainsString('--session', (string) ($r['hint'] ?? ''));
+        // UN `deny` YA NO NECESITA QUE LE DES SESIÓN, porque siempre hay una donde anotarlo.
+        //
+        // Este caso existía porque negar una herramienta es una decisión que hay que poder auditar, y
+        // sin sesión no había dónde escribirla: rehusar era más honesto que ignorar. Con sesión
+        // acuñada en toda corrida, el motivo desapareció y la negativa se registra.
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        self::assertArrayHasKey('session', $r, 'la negativa queda anotada en una sesión');
     }
 
     /**
