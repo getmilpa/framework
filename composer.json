@@ -37,6 +37,10 @@
   },
   "require-dev": {
     "friendsofphp/php-cs-fixer": "^3.65",
+    "milpa/agent": "^0.8.0",
+    "milpa/ai-gateway": "^0.8.2",
+    "milpa/devtools": "^0.14.4",
+    "milpa/event-store": "^0.1.0",
     "phpstan/phpstan": "^2.1",
     "phpunit/phpunit": "^11.5"
   },
