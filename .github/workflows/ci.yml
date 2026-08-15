@@ -61,9 +61,18 @@ jobs:
       # invisible justo donde importa.
       - name: Install the opt-ins (for the tests that verify the other face)
         run: |
+          # LOS TECHOS TAMBIEN VIVEN EN EL YAML, y ahi el riel de manifiestos no mira.
+          #
+          # Estos seis carets estaban clavados aqui, no en el composer.json, asi que el colapso a
+          # rangos (greenhouse decisions/0034) los dejo intactos y este paso empezo a fallar en cuanto
+          # los hermanos avanzaron: «milpa/devtools ^0.14 ... requires milpa/command ^0.7» contra un
+          # command que ya iba en 0.9.
+          #
+          # El rojo NO era una incompatibilidad real: era una enumeracion escondida donde nadie la
+          # buscó. Un manifiesto no es el unico lugar donde un requisito se escribe como historia.
           composer require --dev --no-interaction --no-progress --prefer-dist \
-            milpa/agent:^0.7 milpa/ai-gateway:^0.8 milpa/auth:^0.3.4 \
-            milpa/data:^0.2.2 milpa/devtools:^0.14 milpa/mcp-server:^0.4.3
+            "milpa/agent:>=0.7 <1.0" "milpa/ai-gateway:>=0.8 <1.0" "milpa/auth:>=0.3.4 <1.0" \
+            "milpa/data:>=0.2.2 <1.0" "milpa/devtools:>=0.12 <1.0" "milpa/mcp-server:>=0.4.3 <1.0"
       - name: License gate (runtime deps must be MIT / BSD / Apache-2.0 / ISC)
         run: |
           composer licenses --no-dev --format=json | php -r '$d=json_decode(stream_get_contents(STDIN),true)?:[];$allow="~^(MIT|BSD-[0-9].*|Apache-2\\.0|ISC)$~";$bad=[];foreach(($d["dependencies"]??[]) as $n=>$i){$ls=(array)($i["license"]??[]);if($ls===[]){$bad[]="$n: (none declared)";continue;}$ok=false;foreach($ls as $l){if(preg_match($allow,(string)$l)){$ok=true;break;}}if(!$ok)$bad[]="$n: ".implode(" OR ",$ls);}if($bad){fwrite(STDERR,"Disallowed dependency licenses (only MIT/BSD/Apache-2.0/ISC allowed):\n- ".implode("\n- ",$bad)."\n");exit(1);}echo "license gate ok: ".count($d["dependencies"]??[])." runtime deps, each offered under MIT/BSD/Apache-2.0/ISC\n";'
