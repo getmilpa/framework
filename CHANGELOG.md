@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.37.0](https://github.com/getmilpa/framework/compare/v0.36.2...v0.37.0) (2026-08-27)
+
+
+### Features
+
+* **http:** wire FileConfirmTokenStore so the HTTP confirm gate completes ([#78](https://github.com/getmilpa/framework/issues/78)) ([8be4a63](https://github.com/getmilpa/framework/commit/8be4a636ec5494861e57fd034e2cbedb1bd49884))
+
 ## [0.26.1](https://github.com/getmilpa/framework/releases/tag/v0.26.1) (2026-08-13)
 
 Accepts `app-runtime ^0.20`, where what an agent configuration key looks like has a single definition (`AgentKeyScan`) instead of two copies that disagreed on whether a key may start with a digit.
