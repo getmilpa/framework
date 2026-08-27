@@ -17,6 +17,7 @@ namespace App\Plugins\OperationsHttpPlugin;
 use Milpa\AppRuntime\Support\Operations;
 use Milpa\Attributes\PluginMetadata;
 use Milpa\Command\Operation;
+use Milpa\Console\FileConfirmTokenStore;
 use Milpa\Console\Http\HttpProjector;
 use Milpa\Command\OperationHttpPolicy;
 use Milpa\Interfaces\Di\DIContainerInterface;
@@ -124,6 +125,7 @@ class OperationsHttpPlugin implements PluginInterface, RouteProviderInterface
             $this->container,
             $psr17,
             $psr17,
+            tokens: new FileConfirmTokenStore($this->appRoot() . '/storage/confirm-tokens.json'),
             policy: $politica instanceof OperationHttpPolicy ? $politica : null,
         );
 
