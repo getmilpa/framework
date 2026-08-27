@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.38.0](https://github.com/getmilpa/framework/compare/v0.37.0...v0.38.0) (2026-08-27)
+
+
+### Features
+
+* **http:** thread the event dispatcher into the HTTP projector so executions are audited ([#80](https://github.com/getmilpa/framework/issues/80)) ([ebf82a3](https://github.com/getmilpa/framework/commit/ebf82a32f3efa89c76fbab374cf12d15c1efac03))
+
 ## [0.37.0](https://github.com/getmilpa/framework/compare/v0.36.2...v0.37.0) (2026-08-27)
 
 
