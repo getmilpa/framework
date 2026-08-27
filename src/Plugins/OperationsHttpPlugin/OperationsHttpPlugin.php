@@ -17,6 +17,7 @@ namespace App\Plugins\OperationsHttpPlugin;
 use Milpa\AppRuntime\Support\Operations;
 use Milpa\Attributes\PluginMetadata;
 use Milpa\Command\Operation;
+use Milpa\Interfaces\Event\MilpaEventDispatcherInterface;
 use Milpa\Console\FileConfirmTokenStore;
 use Milpa\Console\Http\HttpProjector;
 use Milpa\Command\OperationHttpPolicy;
@@ -120,6 +121,13 @@ class OperationsHttpPlugin implements PluginInterface, RouteProviderInterface
         $this->assertGuarded($expuestas, $politica instanceof OperationHttpPolicy);
 
         $psr17 = new Psr17Factory();
+        // Thread the event dispatcher when the app wired one, so an operation executed over HTTP
+        // emits operation.executed WITH its invocation context (actor/executor/authority) — the
+        // attribution the direct path lacked (greenhouse evidence/0362). A tiny app that wires none
+        // gets null and runs exactly as before.
+        $eventos = $this->container->has(MilpaEventDispatcherInterface::class)
+            ? $this->container->get(MilpaEventDispatcherInterface::class)
+            : null;
         $proyector = new HttpProjector(
             $expuestas,
             $this->container,
@@ -127,6 +135,7 @@ class OperationsHttpPlugin implements PluginInterface, RouteProviderInterface
             $psr17,
             tokens: new FileConfirmTokenStore($this->appRoot() . '/storage/confirm-tokens.json'),
             policy: $politica instanceof OperationHttpPolicy ? $politica : null,
+            dispatcher: $eventos instanceof MilpaEventDispatcherInterface ? $eventos : null,
         );
 
         $this->container->registerService(HttpProjector::class, $proyector);
