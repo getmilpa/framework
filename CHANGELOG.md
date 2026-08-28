@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.38.1](https://github.com/getmilpa/framework/compare/v0.38.0...v0.38.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **mcp:** register the booted Kernel so the MCP surface can reach the session store ([#82](https://github.com/getmilpa/framework/issues/82)) ([6cee7bf](https://github.com/getmilpa/framework/commit/6cee7bf36918986636732022902fae88f16ad140))
+
 ## [0.38.0](https://github.com/getmilpa/framework/compare/v0.37.0...v0.38.0) (2026-08-27)
 
 
