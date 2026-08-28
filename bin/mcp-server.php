@@ -65,6 +65,15 @@ if ($container instanceof DIContainerInterface) {
 
 $kernel = Kernel::boot($bootConfig);
 
+// Register the booted Kernel into its own container so AgentOperations' session-store fallback can build a
+// file-backed store for THIS surface. Without it, agent:show / agent:answer over MCP report "nowhere to store
+// sessions": the MCP surface is BLIND to the sessions the CLI and web surfaces share, so a gate the agent parked
+// cannot be answered here (greenhouse decisions/0134, evidence/0395).
+$kernelContainer = $kernel->container();
+if ($kernelContainer instanceof DIContainerInterface) {
+    $kernelContainer->registerService(Kernel::class, $kernel);
+}
+
 $registry = $kernel->toolRegistry();
 if (!$registry instanceof ToolRegistry) {
     // Unreachable via the boot call above (it always passes a ToolRegistry) — guards the type
