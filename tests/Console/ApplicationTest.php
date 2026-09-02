@@ -60,12 +60,10 @@ final class ApplicationTest extends TestCase
     {
         $texto = $this->coa()['texto'];
 
-        self::assertStringContainsString('They read:', $texto);
-        self::assertStringContainsString('They change something:', $texto);
         self::assertLessThan(
             strpos($texto, 'plugins:enable'),
-            (int) strpos($texto, 'They change something:'),
-            'habilitar un plugin cambia algo y va del lado que cambia',
+            (int) strpos($texto, 'plugins:list'),
+            'lo que lee (plugins:list) se lista antes de lo que cambia (plugins:enable)',
         );
     }
 

@@ -267,6 +267,98 @@ are **terminal-only**: whoever can mint a token can mint one with every scope.
 Remove those three lines from `config/boot.php` and the app still runs whole over the terminal and
 MCP — it just cannot expose anything that declares scopes, and the boot says so.
 
+### What an operation must declare to be served — and why a read got a 428
+
+An operation reaches HTTP through one chain:
+
+```
+AuthenticateMiddleware  →  (your app middlewares)  →  RequestHandler  →  HttpProjector
+```
+
+`AuthenticateMiddleware` (from `milpa/auth`, wired in `public/index.php`) turns
+`Authorization: Bearer …` into a verified actor and leaves it on the request; `RequestHandler`
+resolves the route and runs the operation; `HttpProjector` (from `milpa/console`) coerces the input
+against the operation's schema and shapes the response. A middleware of your own hooks **in
+`public/index.php`**, by nesting one more `process()` between authentication and the handler:
+
+```php
+// public/index.php — a custom middleware sits between auth and the handler
+$response = (new AuthenticateMiddleware($verifier))
+    ->process($request, new YourMiddleware(/* … */, $handler));
+// YourMiddleware::process($request, $handler) does its work, then $handler->handle($request)
+```
+
+**The one thing that is not optional: an `EffectProfile`.** Consent is decided by
+`Consent::demanded($operation, $arguments)`, and it reads the operation's effect *ceiling*. An
+operation that declares **no** `EffectProfile` has an *unknown* ceiling — and unknown is the
+**highest** weight, not the lowest (an effect nobody classified must be treated as the worst case).
+So an unclassified operation demands consent on **every** call, and a plain read served over HTTP
+answers **428 Precondition Required** where you expected a 200. This is the seam `app-docentes`
+hit first: `sync_pull`, a read, returned 428 until it declared its effects.
+
+Declare them. A read says so, and is served without ceremony:
+
+```php
+use Milpa\Command\Effect\EffectProfile;
+
+new Operation(
+    name: 'sync.pull',
+    effects: EffectProfile::readOnly(),   // no mutation, no consent, served straight
+    handler: /* … */,
+);
+```
+
+A write declares what it actually does, and consent applies by policy, not by accident:
+
+```php
+use Milpa\Command\Effect\{EffectProfile, Mutation, Externality, Reversibility, Authority, Subject};
+
+new Operation(
+    name: 'sync.push',
+    effects: new EffectProfile(
+        mutation: Mutation::Persistent,      // it writes
+        externality: Externality::None,      // nothing leaves the app
+        reversibility: Reversibility::Compensatable,
+        authority: Authority::WriteAsUser,
+        subject: Subject::Data,
+    ),
+    handler: /* … */,
+);
+```
+
+The rule to carry: **an operation with no `EffectProfile` is not "harmless by default" — it is
+"worst-case by default."** Declaring `readOnly()` is how a read earns its 200.
+
+### Plugins that open connections: `boot()` runs on the caller's machine
+
+`coa` and MCP run in-process on the machine of whoever invokes them, with no server between. That
+promise has a sharp edge: a plugin's `boot()` runs on **every** invocation, including `coa list` and
+every MCP handshake. A `boot()` that opens a database connection (Doctrine, PDO, a socket) makes
+`coa` itself fail to start when that database is unreachable — the app becomes unrunnable from the
+terminal because of a dependency the terminal never needed.
+
+Keep `boot()` about **wiring, not connecting**. `registerService($id, Class::class)` with a
+**class-string** is already lazy — the container instantiates it on the first `get()`, not at boot —
+so a command that never touches the database never opens it. The anti-pattern is opening the
+connection inside `boot()` itself, or handing `registerService` an already-connected **object**:
+
+```php
+public function boot(): void
+{
+    // WIRING, not connecting: the class-string is resolved on first get(), not now.
+    // Its constructor must NOT connect — it reads config and opens on first real query.
+    $this->container->registerService(\App\Db\Connection::class, \App\Db\Connection::class);
+
+    // ANTI-PATTERN — this opens the socket at boot, so `coa list` dies when the DB is down:
+    // $this->container->registerService(\App\Db\Connection::class, Connection::fromConfig($cfg));
+}
+```
+
+Make the connection object itself connect lazily (open on the first query, not in its constructor).
+A plugin that genuinely needs a live connection before serving should open it in the request path,
+never in `boot()`. The test that guards it is the cheapest one in the house: `coa list` must succeed
+with the database down.
+
 ## Hooks
 
 Every operation — from the terminal, the TUI, HTTP or MCP — runs through one seam that announces it:

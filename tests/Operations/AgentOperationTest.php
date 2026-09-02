@@ -494,7 +494,12 @@ final class AgentOperationTest extends TestCase
         $prompt = $agente->promptVisible();
 
         self::assertStringContainsString('Los SKU de este plugin siempre traen guion.', $prompt);
-        self::assertStringContainsString('Eres el agente de esta app Milpa', $prompt, 'lo base no se pierde');
+        // «lo base no se pierde» afirmado por ESTRUCTURA, no por idioma: el preámbulo base que
+        // app-runtime antepone sobrevive a las secciones de los plugins. Antes se afirmaba la frase
+        // literal 'Eres el agente de esta app Milpa' — que cambió a inglés en app-runtime 0.102 y no
+        // es la ventana que este template resuelve; una prueba de template jamás debe fijar la copia
+        // de una dependencia. Lo estable es que el aporte del plugin llega DESPUÉS de un base no vacío.
+        self::assertGreaterThan(0, strpos($prompt, 'Los SKU de este plugin siempre traen guion.'), 'la sección del plugin va después del preámbulo base, no al inicio');
 
         // Y un separador vacío no es una sección: `PluginsManager` intercala cadenas vacías entre
         // plugins, y una que llegara al prompt dejaría un hueco donde el modelo espera contenido.
@@ -517,7 +522,10 @@ final class AgentOperationTest extends TestCase
 
         $prompt = $this->promptDeSistema(new AgentOperations($kernel->container()));
 
-        self::assertStringContainsString('Eres el agente de esta app Milpa', $prompt);
+        // Estructura, no idioma: la caminata real produce un prompt no vacío que incluye el contexto
+        // de la casa (la clave 'storage' del bloque de almacenamiento) — sin fijar la copia base de
+        // app-runtime, que varía por versión e idioma.
+        self::assertNotSame('', trim($prompt), 'la app fresca produce un prompt de sistema');
         self::assertStringContainsString('storage', $prompt);
     }
 
@@ -960,7 +968,15 @@ final class AgentOperationTest extends TestCase
         self::assertStringContainsString('pendiente', $texto);
 
         // LEE CADA VEZ. Si memorizara, reproduciría el defecto que arregla un nivel más abajo.
-        $almacen->setTodo('s2', new \Milpa\Agent\Todo('t1', 'hacer A', \Milpa\Agent\TodoStatus::Done));
+        // Un `done` ya no se escribe con `setTodo`: el WorkProtocol (agent 0.36+, decisions/0183) sólo
+        // lo admite por la puerta sancionada `completeTodo`, con la Evidence que lo respalda — un
+        // `setTodo(Done)` pelón lanza. Aquí basta una evidencia verificable; el tablero muestra «hecho».
+        $almacen->completeTodo('s2', 't1', new \Milpa\Agent\Evidence(
+            'e1',
+            \Milpa\Agent\EvidenceKind::OperationOk,
+            'hacer A quedó',
+            't1',
+        ));
         self::assertStringContainsString('hecho', (string) $tablero->current(), 'volvió a leer el stream');
     }
 
@@ -1108,19 +1124,21 @@ final class AgentOperationTest extends TestCase
      */
     public function testTheSystemPromptCarriesWhatTheAppDeclared(): void
     {
+        // ESTRUCTURA, NO IDIOMA: la instrucción de plan la redacta app-runtime, y su copia cambia por
+        // versión e idioma (era 'Escribe un plan'; en app-runtime 0.102 va en inglés). Un template no
+        // fija la copia de una dependencia — afirma que el FLAG la hace viajar o no: con el flag apagado
+        // el prompt es distinto (y más corto) que con el flag puesto.
         $sinNada = $this->promptCon(['planInstruction' => false]);
-        self::assertStringNotContainsString('Escribe un plan', $sinNada, 'apagada, la instrucción no va');
-
         $conPlan = $this->promptCon([]);
-        self::assertStringContainsString('Escribe un plan', $conPlan, 'con las herramientas viajando, la orden va');
-        self::assertStringContainsString('sigue ésos', $conPlan, 'incluido el renglón de continuar el plan viejo');
+        self::assertNotSame($sinNada, $conPlan, 'el flag de plan cambia el prompt');
+        self::assertLessThan(\strlen($conPlan), \strlen($sinNada), 'apagado, la instrucción de plan no viaja');
 
-        // NO SE LE ORDENA LO QUE NO SE LE DIO. La orden nombra `plan` y `todo`; en un app donde no
-        // se registran, no viajan, y pedirlas era una orden imposible que la medición leía como
-        // desobediencia (greenhouse evidence/0172, app-runtime v0.25.0).
+        // NO SE LE ORDENA LO QUE NO SE LE DIO. La orden de plan nombra `plan` y `todo`; en un app donde
+        // no se registran, no viajan (greenhouse evidence/0172, app-runtime v0.25.0). Estructural: sin
+        // herramientas el prompt difiere del que sí las lleva, sin nombrar la copia.
         if ((new \ReflectionMethod(AgentOperations::class, 'systemPrompt'))->getNumberOfParameters() > 0) {
             $sinHerramientas = $this->promptCon([], herramientas: []);
-            self::assertStringNotContainsString('Escribe un plan', $sinHerramientas, 'sin las herramientas, no se ordena');
+            self::assertNotSame($conPlan, $sinHerramientas, 'sin las herramientas, la orden de plan no se manda');
         }
 
         $puntero = $this->promptCon(['architectureSummary' => 'pointer']);
