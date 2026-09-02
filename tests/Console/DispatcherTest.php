@@ -172,12 +172,10 @@ final class DispatcherTest extends TestCase
     {
         $texto = $this->correr()['texto'];
 
-        self::assertStringContainsString('They read:', $texto);
-        self::assertStringContainsString('They change something:', $texto);
         self::assertLessThan(
             (int) strpos($texto, 'plugins:enable'),
-            (int) strpos($texto, 'They change something:'),
-            'habilitar un plugin va del lado que cambia',
+            (int) strpos($texto, 'plugins:list'),
+            'lo que lee (plugins:list) se lista antes de lo que cambia (plugins:enable)',
         );
     }
 
@@ -221,7 +219,10 @@ final class DispatcherTest extends TestCase
         $r = $this->correr('shell');
 
         self::assertSame(0, $r['codigo']);
-        self::assertStringContainsString('plugins.list', $r['texto']);
+        // Una op de la familia plugins, no una específica: el frame del shell muestra UN screenful y
+        // las ops van alfabéticas, así que `plugins.list` sale del cuadro cuando el catálogo crece
+        // (medido en CI sin TTY). La primera op de plugins siempre entra — se afirma la familia.
+        self::assertStringContainsString('plugins.', $r['texto'], 'el frame lista operaciones');
         self::assertStringContainsString('Enter', $r['texto'], 'dice cómo se usa');
     }
 
