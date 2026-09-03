@@ -25,7 +25,7 @@
     "milpa/core": ">=0.6.2 <1.0",
     "milpa/live-tui": ">=0.4 <1.0",
     "milpa/plugin": ">=0.8 <1.0",
-    "milpa/runtime": ">=0.7.1 <1.0",
+    "milpa/runtime": ">=0.9.1 <1.0",
     "milpa/tool-runtime": ">=0.9 <1.0",
     "nyholm/psr7": "^1.8",
     "nyholm/psr7-server": "^1.1"
