@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Milpa\Auth\Contracts\CredentialVerifier;
 use Milpa\Auth\Http\AuthenticateMiddleware;
 use Milpa\Runtime\Http\RequestHandler;
+use Milpa\Runtime\Http\ResponseEmitter;
 use Milpa\Runtime\Kernel;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7Server\ServerRequestCreator;
@@ -55,10 +56,8 @@ $response = $container->has(CredentialVerifier::class)
     ? (new AuthenticateMiddleware($container->get(CredentialVerifier::class)))->process($request, $handler)
     : $handler->handle($request);
 
-http_response_code($response->getStatusCode());
-foreach ($response->getHeaders() as $name => $values) {
-    foreach ($values as $value) {
-        header("{$name}: {$value}", false);
-    }
-}
-echo $response->getBody();
+// La emisión vive en `ResponseEmitter`: manda status + headers y luego el cuerpo. Si el cuerpo es un
+// `CallbackStream` lo STREAMEA (vence el output buffering y corre el callback), así una operación puede
+// servir `text/event-stream` en vivo; cualquier respuesta normal se emite igual que antes. Una línea en
+// vez de tres, y con ella la app gana SSE sin tocar este archivo.
+(new ResponseEmitter())->emit($response);
