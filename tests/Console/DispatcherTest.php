@@ -219,10 +219,11 @@ final class DispatcherTest extends TestCase
         $r = $this->correr('shell');
 
         self::assertSame(0, $r['codigo']);
-        // Una op de la familia plugins, no una específica: el frame del shell muestra UN screenful y
-        // las ops van alfabéticas, así que `plugins.list` sale del cuadro cuando el catálogo crece
-        // (medido en CI sin TTY). La primera op de plugins siempre entra — se afirma la familia.
-        self::assertStringContainsString('plugins.', $r['texto'], 'el frame lista operaciones');
+        // El frame muestra UN screenful de ops en orden alfabético, así que NINGUNA op específica está
+        // garantizada dentro del cuadro cuando el catálogo crece (medido en CI sin TTY: al sumar ops el
+        // catálogo, `plugins.*` sale del cuadro). Lo estable es que el frame LISTA ops: el glifo de
+        // selección `▸` marca la op activa y aparece siempre que hay al menos una — se afirma eso.
+        self::assertStringContainsString('▸', $r['texto'], 'el frame lista operaciones');
         self::assertStringContainsString('Enter', $r['texto'], 'dice cómo se usa');
     }
 
