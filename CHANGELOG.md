@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.39.0](https://github.com/getmilpa/framework/compare/v0.38.1...v0.39.0) (2026-09-03)
+
+
+### Features
+
+* emit through ResponseEmitter so a new app can stream SSE ([#85](https://github.com/getmilpa/framework/issues/85)) ([d06f793](https://github.com/getmilpa/framework/commit/d06f79337b62dfe4e700fb0dbc26640e5649b183))
+
 ## [0.38.1](https://github.com/getmilpa/framework/compare/v0.38.0...v0.38.1) (2026-08-28)
 
 
