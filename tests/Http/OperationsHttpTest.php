@@ -151,7 +151,7 @@ final class OperationsHttpTest extends TestCase
 
         $this->expose('*');
 
-        $permisiva = new class implements OperationHttpPolicy {
+        $permisiva = new class () implements OperationHttpPolicy {
             public function enforce(Operation $op, ServerRequestInterface $request): ?ResponseInterface
             {
                 return null;
