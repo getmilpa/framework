@@ -174,6 +174,18 @@ class OperationsHttpPlugin implements PluginInterface, RouteProviderInterface
             $porNombre[$operacion->name] = $operacion;
         }
 
+        // A wildcard exposes every operation that DECLARED the http surface — the app opting in to all its
+        // http-capable atoms at once (greenhouse decisions/0194). It reaches only ops whose author already
+        // added 'http' to their surfaces (the per-op opt-in still holds), the runner still enforces each
+        // op's grant, and assertGuarded() below still refuses to publish a scoped/permissioned op without a
+        // policy. It is one line in a diff, read the same as any other expose — an explicit app choice.
+        if (in_array('*', $nombres, true)) {
+            return array_values(array_filter(
+                $porNombre,
+                static fn (Operation $operacion): bool => $operacion->supportsSurface('http'),
+            ));
+        }
+
         $expuestas = [];
         foreach ($nombres as $nombre) {
             if (!isset($porNombre[$nombre])) {

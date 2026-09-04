@@ -140,6 +140,31 @@ final class OperationsHttpTest extends TestCase
     }
 
     /**
+     * El comodín `*` publica TODAS las operaciones que declaran el surface http — la app optando por
+     * todas sus ops http-capaces de una línea (greenhouse decisions/0194). Alcanza sólo las que ya
+     * declararon http (el opt-in por-op sigue), y una política permisiva deja que las protegidas pasen
+     * la compuerta de arranque; el runner sigue exigiendo el grant de cada una al atender.
+     */
+    public function testAWildcardExposesEveryHttpDeclaringOperation(): void
+    {
+        OptIn::needs(\Milpa\DevTools\Doctor\Repair::class);
+
+        $this->expose('*');
+
+        $permisiva = new class implements OperationHttpPolicy {
+            public function enforce(Operation $op, ServerRequestInterface $request): ?ResponseInterface
+            {
+                return null;
+            }
+        };
+
+        $rutas = $this->plugin($permisiva)->routes();
+        $paths = array_map(static fn (\Milpa\Http\Routing\Route $r): string => $r->path, $rutas);
+
+        self::assertContains('/validate', $paths, 'the wildcard reaches an http-declaring operation');
+    }
+
+    /**
      * Un nombre que no corresponde a ninguna operación se dice AL ARRANCAR, con la lista de las que
      * hay.
      *
