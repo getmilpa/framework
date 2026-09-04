@@ -320,19 +320,21 @@ final class AgentOperationTest extends TestCase
     }
 
     /**
-     * Sólo en la terminal.
+     * En la terminal y por HTTP — no por MCP.
      *
-     * Un agente corriendo por HTTP con las credenciales del servidor es otra decisión —y de quien
-     * monta la app, no de esta plantilla.
+     * Correr al agente por HTTP con las credenciales del servidor era «otra decisión»; desde
+     * greenhouse decisions/0190 el canal web LA tomó: un turno gobernado por la superficie http es lo
+     * que el Desktop maneja, con su consentimiento y atribución. Sigue fuera de MCP —un agente que se
+     * ofrece a otro agente es un bucle que nadie pidió.
      */
-    public function testItIsATerminalSurfaceOnly(): void
+    public function testItRunsInTheTerminalAndOverHttpButNotMcp(): void
     {
         OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\EventStore\InMemoryEventStore::class);
 
         $op = $this->operacion();
 
         self::assertTrue($op->supportsSurface('cli'));
-        self::assertFalse($op->supportsSurface('http'));
+        self::assertTrue($op->supportsSurface('http'), 'el turno gobernado por http lo maneja el Desktop (greenhouse decisions/0190)');
         self::assertFalse($op->supportsSurface('mcp'), 'un agente que se ofrece a otro agente es un bucle que nadie pidió');
     }
 
