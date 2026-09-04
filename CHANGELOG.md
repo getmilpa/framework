@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.40.0](https://github.com/getmilpa/framework/compare/v0.39.0...v0.40.0) (2026-09-04)
+
+
+### Features
+
+* config/http.php accepts a wildcard to expose every http-declaring operation ([#87](https://github.com/getmilpa/framework/issues/87)) ([3347905](https://github.com/getmilpa/framework/commit/3347905a640946a76baac8dfe8f0c663b2cf53ea))
+
 ## [0.39.0](https://github.com/getmilpa/framework/compare/v0.38.1...v0.39.0) (2026-09-03)
 
 
