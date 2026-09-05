@@ -2,8 +2,7 @@
 
 declare(strict_types=1);
 
-use Milpa\Auth\Contracts\CredentialVerifier;
-use Milpa\Auth\Http\AuthenticateMiddleware;
+use App\Http\IdentityChain;
 use Milpa\Runtime\Http\RequestHandler;
 use Milpa\Runtime\Http\ResponseEmitter;
 use Milpa\Runtime\Kernel;
@@ -51,10 +50,15 @@ $handler = new RequestHandler($kernel, $psr17);
 //
 // Sin verificador registrado el pipeline es el de antes, y una operación con scopes simplemente no
 // se puede exponer (config/http.php lo dice al arrancar).
-$container = $kernel->container();
-$response = $container->has(CredentialVerifier::class)
-    ? (new AuthenticateMiddleware($container->get(CredentialVerifier::class)))->process($request, $handler)
-    : $handler->handle($request);
+//
+// The passkey session is the SECOND principal of this chain (greenhouse decisions/0208). When the
+// passkey door is wired, `PasskeyPlugin` registers `PasskeySessionMiddleware` under its own class name
+// and `IdentityChain` picks it up AFTER the Bearer: it yields to a context the Bearer already decided
+// (a rejected token is never laundered by a cookie), drops a session whose enrollment was revoked, and
+// trusts the cookie on a mutating request only when the body is JSON and the fetch is same-origin.
+// `App\Http\IdentityChain` folds whatever principals the container holds so this file does not grow a
+// nesting per identity package — and a fresh app, holding none, runs the bare handler.
+$response = IdentityChain::fromContainer($kernel->container())->handle($request, $handler);
 
 // La emisión vive en `ResponseEmitter`: manda status + headers y luego el cuerpo. Si el cuerpo es un
 // `CallbackStream` lo STREAMEA (vence el output buffering y corre el callback), así una operación puede
