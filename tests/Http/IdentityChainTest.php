@@ -96,6 +96,9 @@ final class IdentityChainTest extends TestCase
      */
     public function testThePasskeySessionSlotTurnsOnByRegistration(): void
     {
+        // The slot is asked for only where it can load (greenhouse evidence/0521, control F7): without
+        // milpa/auth the chain does not even look, so this measures nothing on a bare app.
+        OptIn::needs(IdentityChain::PASSKEY_SESSION_NEEDS);
         $container = new DIContainer();
         $container->registerService(IdentityChain::PASSKEY_SESSION, self::tracing('session'));
 
@@ -107,6 +110,30 @@ final class IdentityChainTest extends TestCase
         self::assertNotNull($handler->seen);
         self::assertSame(['session'], $handler->seen->getAttribute('trail'), 'the session principal ran before the handler');
         self::assertSame('session', $response->getHeaderLine('X-Seen-By'), 'and the response flowed back through it');
+    }
+
+    /**
+     * The floor of the passkey slot (greenhouse evidence/0521, control F7): on an app without milpa/auth
+     * the chain must not even ASK the container for the session middleware — `has()` autoloads the
+     * class to judge it, and the class implements a milpa/auth interface, so the question itself was a
+     * fatal on every request of a fresh app. Here a middleware IS registered under the name, and the
+     * chain still leaves it alone: the slot cannot load, so it does not exist.
+     */
+    public function testWithoutMilpaAuthThePasskeySlotIsNotEvenAskedFor(): void
+    {
+        if (interface_exists(IdentityChain::PASSKEY_SESSION_NEEDS)) {
+            self::markTestSkipped('milpa/auth is installed: the floor has nothing to measure here');
+        }
+        $container = new DIContainer();
+        $container->registerService(IdentityChain::PASSKEY_SESSION, self::tracing('session'));
+
+        $chain = IdentityChain::fromContainer($container);
+        $handler = self::recorder();
+        $chain->handle(new ServerRequest('GET', '/capabilities'), $handler);
+
+        self::assertSame([], $chain->middlewares(), 'the slot that cannot load is not asked for');
+        self::assertNotNull($handler->seen);
+        self::assertNull($handler->seen->getAttribute('trail'), 'the registered middleware never ran');
     }
 
     /**
@@ -132,6 +159,7 @@ final class IdentityChainTest extends TestCase
      */
     public function testSomethingThatIsNotAMiddlewareUnderTheSessionNameIsSaidLoudly(): void
     {
+        OptIn::needs(IdentityChain::PASSKEY_SESSION_NEEDS);
         $container = new DIContainer();
         $container->registerService(IdentityChain::PASSKEY_SESSION, new \stdClass());
 
