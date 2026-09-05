@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.41.1](https://github.com/getmilpa/framework/compare/v0.41.0...v0.41.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **identity:** do not ask the container for the passkey slot when milpa/auth is absent ([#91](https://github.com/getmilpa/framework/issues/91)) ([80974b6](https://github.com/getmilpa/framework/commit/80974b6f2771b42abd5e2aeba8008d1fe8c93017))
+
 ## [0.41.0](https://github.com/getmilpa/framework/compare/v0.40.0...v0.41.0) (2026-09-05)
 
 
