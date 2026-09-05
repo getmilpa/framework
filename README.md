@@ -237,11 +237,17 @@ API nobody decided on. Same doctrine as `config/plugins.php`: what runs is a ver
 ### Identity, so the protected ones can be served too
 
 Most operations worth exposing declare `scopes` — all twelve `plugins.*` do. This app wires the three
-pieces that make them servable, in `config/boot.php`:
+pieces that make them servable, in `config/boot.php` through `App\Http\IdentityWiring`:
 
 1. a **token store** (`milpa/data`, file-backed by default — change the driver in `config/app.php`),
 2. a **verifier** that turns `Authorization: Bearer …` into an actor with scopes,
 3. a **policy** (`milpa/auth`) that decides whether that actor may run *this* operation.
+
+Each is gated by the package it is made of, and by nothing else: the policy comes with `milpa/auth`
+alone; the store and the verifier with `milpa/data`. So a house with a passkey door and no token store
+still has a policy — and the passkey session, registered as the container's `AuthContextFactory`, is
+the auth chain that policy asks for (greenhouse decisions/0208). A house with `milpa/auth` and
+neither boots too; a scoped operation over HTTP then answers a `500` that names what is missing.
 
 Mint a token, expose the operation, call it:
 
@@ -264,29 +270,49 @@ A token with the wrong scopes gets a 403 that names what was missing. `token:lis
 secret or its hash, `token:revoke` takes effect on the next request, and the three token operations
 are **terminal-only**: whoever can mint a token can mint one with every scope.
 
-Remove those three lines from `config/boot.php` and the app still runs whole over the terminal and
-MCP — it just cannot expose anything that declares scopes, and the boot says so.
+Remove the two `IdentityWiring` lines from `config/boot.php` and the app still runs whole over the
+terminal and MCP — it just cannot expose anything that declares scopes, and the boot says so.
 
 ### What an operation must declare to be served — and why a read got a 428
 
 An operation reaches HTTP through one chain:
 
 ```
-AuthenticateMiddleware  →  (your app middlewares)  →  RequestHandler  →  HttpProjector
+AuthenticateMiddleware  →  PasskeySessionMiddleware  →  (your app middlewares)  →  RequestHandler  →  HttpProjector
 ```
 
-`AuthenticateMiddleware` (from `milpa/auth`, wired in `public/index.php`) turns
-`Authorization: Bearer …` into a verified actor and leaves it on the request; `RequestHandler`
-resolves the route and runs the operation; `HttpProjector` (from `milpa/console`) coerces the input
-against the operation's schema and shapes the response. A middleware of your own hooks **in
-`public/index.php`**, by nesting one more `process()` between authentication and the handler:
+`AuthenticateMiddleware` (from `milpa/auth`) turns `Authorization: Bearer …` into a verified actor and
+leaves it on the request; `PasskeySessionMiddleware` (from `milpa/app-runtime`, present once the
+passkey door is wired) does the same for the passkey session cookie; `RequestHandler` resolves the
+route and runs the operation; `HttpProjector` (from `milpa/console`) coerces the input against the
+operation's schema and shapes the response. The two identity slots are composed by
+`App\Http\IdentityChain` (`src/Http/IdentityChain.php`) from what the container holds — a fresh app
+holds neither and runs the bare handler. A middleware of your own hooks **in `public/index.php`**, as
+the handler the chain ends in — a PSR-15 middleware is not a handler, so wrap it in one:
 
 ```php
-// public/index.php — a custom middleware sits between auth and the handler
-$response = (new AuthenticateMiddleware($verifier))
-    ->process($request, new YourMiddleware(/* … */, $handler));
-// YourMiddleware::process($request, $handler) does its work, then $handler->handle($request)
+// public/index.php — a custom middleware sits between identity and the handler
+$yours = new YourMiddleware(/* … */);                    // Psr\Http\Server\MiddlewareInterface
+$response = IdentityChain::fromContainer($kernel->container())->handle(
+    $request,
+    new class ($yours, $handler) implements RequestHandlerInterface {
+        public function __construct(private readonly MiddlewareInterface $m, private readonly RequestHandlerInterface $next) {}
+        public function handle(ServerRequestInterface $r): ResponseInterface { return $this->m->process($r, $this->next); }
+    },
+);
+// YourMiddleware::process($request, $next) does its work, then $next->handle($request)
 ```
+
+**The passkey session is a principal of the operations surface** (greenhouse decisions/0208). A
+browser signed in through `/webauthn/signin` calls the same operations a Bearer does — `POST /agent`
+included — with no token to paste. Three rules keep that honest: the Bearer goes *first*, and the
+session yields to whatever it decided (a rejected token is never laundered by a cookie); a session
+whose enrollment was revoked is destroyed on the spot, exactly as the panel gate does; and on a
+mutating request (`POST`, `PUT`, `PATCH`, `DELETE`) the cookie counts only when the body is
+`application/json` and, if the browser sends `Sec-Fetch-Site`, it says `same-origin` or `none` — a
+cross-site form post arrives anonymous and the operation's policy answers. Driving the agent needs
+the `agent:run` scope on either principal: `token:new --scopes=agent:run` or a passkey enrolled with
+`--scopes=agent:run`.
 
 **The one thing that is not optional: an `EffectProfile`.** Consent is decided by
 `Consent::demanded($operation, $arguments)`, and it reads the operation's effect *ceiling*. An
@@ -408,6 +434,8 @@ config/http.php          which operations get an HTTP route (empty by default)
 config/boot.php          the container, the plugin list, and the identity chain
 config/app.php           the config bag plugins read in boot()
 public/index.php         the HTTP entry point
+src/Http/IdentityChain.php  the principals index.php runs before the handler: Bearer, then passkey session
+src/Http/IdentityWiring.php the registrations boot.php makes: the policy with milpa/auth, the Bearer with milpa/data
 src/Plugins/HelloPlugin  proof of life: one route, one response
 src/Plugins/OperationsHttpPlugin  serves whatever config/http.php names
 src/Operations            this app's own atoms — `agent` and `token:*` live here

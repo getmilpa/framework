@@ -2,16 +2,10 @@
 
 declare(strict_types=1);
 
-use Milpa\AppRuntime\Auth\ApiToken;
-use Milpa\AppRuntime\Auth\TokenVerifier;
-use Milpa\Auth\Contracts\CredentialVerifier;
-use Milpa\Auth\Http\AuthOperationHttpPolicy;
-use Milpa\Command\OperationHttpPolicy;
+use App\Http\IdentityWiring;
 use Milpa\Container\DIContainer;
-use Milpa\Data\RepositoryFactory;
 use Milpa\Plugin\Activation\ActivePlugins;
 use Milpa\Plugin\Contracts\AppRoot;
-use Nyholm\Psr7\Factory\Psr17Factory;
 
 /**
  * What every entry point needs before `Milpa\Runtime\Kernel::boot()` can run: the container, and
@@ -61,18 +55,19 @@ $plugins = ActivePlugins::wire($container, $declared, __DIR__ . '/../storage/plu
 // vendor sin las clases, y es el vendor el que decide si esto arranca.
 //
 // Para encenderlo:  composer require milpa/auth milpa/data     (o `coa capabilities` para verlo)
-if (class_exists(RepositoryFactory::class) && class_exists(AuthOperationHttpPolicy::class)) {
-    /** @var array<string, mixed> $configApp */
-    $configApp = require __DIR__ . '/app.php';
-    /** @var array<string, mixed> $almacen */
-    $almacen = \is_array($configApp['storage'] ?? null) ? $configApp['storage'] : ['driver' => 'file', 'path' => __DIR__ . '/../storage/tokens.json'];
+//
+// THE POLICY DOES NOT DEPEND ON THE TOKENS (greenhouse decisions/0208). The three pieces used to be
+// one block, gated by both packages at once — so a house with a passkey door and no `milpa/data` had
+// no policy, and could not expose a scoped operation even though the passkey session is a complete
+// auth chain in the policy's eyes. Now each piece is gated by the package it is made of: the POLICY
+// with `milpa/auth` alone; the STORE and the VERIFIER with `milpa/data`. `App\Http\IdentityWiring`
+// holds both registrations, each executed by its own test.
+/** @var array<string, mixed> $configApp */
+$configApp = require __DIR__ . '/app.php';
+/** @var array<string, mixed> $almacen */
+$almacen = \is_array($configApp['storage'] ?? null) ? $configApp['storage'] : ['driver' => 'file', 'path' => __DIR__ . '/../storage/tokens.json'];
 
-    $tokens = RepositoryFactory::fromConfig($almacen, ApiToken::class);
-    $container->registerService(TokenVerifier::class . '.repository', $tokens);
-    $container->registerService(CredentialVerifier::class, new TokenVerifier($tokens));
-
-    $psr17 = new Psr17Factory();
-    $container->registerService(OperationHttpPolicy::class, new AuthOperationHttpPolicy($container, $psr17, $psr17));
-}
+IdentityWiring::policy($container);
+IdentityWiring::bearer($container, $almacen);
 
 return ['container' => $container, 'plugins' => $plugins];
