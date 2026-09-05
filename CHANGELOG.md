@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.41.0](https://github.com/getmilpa/framework/compare/v0.40.0...v0.41.0) (2026-09-05)
+
+
+### Features
+
+* **identity:** compose the passkey session after the Bearer, and wire the HTTP policy without the token store ([#89](https://github.com/getmilpa/framework/issues/89)) ([a9d6ec2](https://github.com/getmilpa/framework/commit/a9d6ec2cb62dd48a35272b3d1ba4683d6b881b3d))
+
 ## [0.40.0](https://github.com/getmilpa/framework/compare/v0.39.0...v0.40.0) (2026-09-04)
 
 
