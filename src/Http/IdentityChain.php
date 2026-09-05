@@ -65,6 +65,12 @@ final class IdentityChain
     public const PASSKEY_SESSION = 'Milpa\\AppRuntime\\Web\\PasskeySessionMiddleware';
 
     /**
+     * The milpa/auth interface the session middleware implements. Without it the class cannot even be
+     * loaded, so {@see fromContainer()} does not ask the container for the slot at all.
+     */
+    public const PASSKEY_SESSION_NEEDS = 'Milpa\\Auth\\Contracts\\AuthContextFactory';
+
+    /**
      * @param list<MiddlewareInterface> $middlewares outermost first — the first one sees the request first
      */
     public function __construct(
@@ -94,7 +100,12 @@ final class IdentityChain
             $chain[] = new AuthenticateMiddleware($verifier);
         }
 
-        if ($container->has(self::PASSKEY_SESSION)) {
+        // Ask the container only when the slot can LOAD. `has()` autoloads a class to decide whether it
+        // is autowirable, and PasskeySessionMiddleware implements milpa/auth's AuthContextFactory: on an
+        // app without `milpa/auth` the mere question was a fatal on every request (greenhouse
+        // evidence/0521, control F7 — a fresh app with no door died at `GET /capabilities`). The
+        // interface the class implements is the guard: absent, the slot cannot exist and is not asked.
+        if (interface_exists(self::PASSKEY_SESSION_NEEDS) && $container->has(self::PASSKEY_SESSION)) {
             $session = $container->get(self::PASSKEY_SESSION);
             if (!$session instanceof MiddlewareInterface) {
                 throw new \RuntimeException(\sprintf(
