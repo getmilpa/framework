@@ -65,4 +65,13 @@ return [
     // máximo de cada eje. Pide consentimiento en vez de saltárselo, que es el lado correcto para
     // equivocarse; darle el catálogo real es otra rebanada, y está declarada.
     Milpa\AppRuntime\Operations\ConfigOperations::class,
+
+    // THE UI CATALOGUE — the agent asks what its own face is made of (greenhouse decisions/0214).
+    // This house lets an agent WRITE a screen and, until this operation, gave it no way to ask which
+    // components exist or what they are for: it composed blind over a library the house itself knows.
+    //
+    // It offers nothing at all when `milpa/live` is absent, which is why it sits ungated here: an app
+    // without a UI gets an empty provider rather than a missing class, and an app that later installs
+    // a component-declaring plugin gains its rows without touching this list.
+    Milpa\AppRuntime\Operations\ComponentOperations::class,
 ];
