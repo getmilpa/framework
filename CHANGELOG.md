@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.42.0](https://github.com/getmilpa/framework/compare/v0.41.1...v0.42.0) (2026-09-06)
+
+
+### Features
+
+* adopt the UI catalogue so the agent can ask what its own face is made of ([#94](https://github.com/getmilpa/framework/issues/94)) ([caa7cdd](https://github.com/getmilpa/framework/commit/caa7cdd244af1c44f1045b047f28daf7fa31ced2))
+
 ## [0.41.1](https://github.com/getmilpa/framework/compare/v0.41.0...v0.41.1) (2026-09-05)
 
 
