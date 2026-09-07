@@ -21,6 +21,17 @@ return [
     'app' => [
         'name' => 'Milpa App',
         'greeting' => 'Milpa is running.',
+
+        /*
+         * WHAT A FAILED REQUEST SHOWS. `false` answers a rendered 500 carrying only a reference; the
+         * detail is in the log under that same reference. `true` adds the class, the file and the line.
+         *
+         * It never adds the exception's MESSAGE, and that is not an oversight: a marker interface saying
+         * «this one is sensitive» is a default that fails open — the authority exception somebody writes
+         * next year leaks until they remember it. So no message and no trace ever cross to a client
+         * (greenhouse decisions/0215).
+         */
+        'debug' => false,
     ],
 
     /*

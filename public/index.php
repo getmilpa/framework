@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\IdentityChain;
+use Milpa\Runtime\Http\ExceptionMiddleware;
 use Milpa\Runtime\Http\RequestHandler;
 use Milpa\Runtime\Http\ResponseEmitter;
 use Milpa\Runtime\Kernel;
@@ -58,7 +59,33 @@ $handler = new RequestHandler($kernel, $psr17);
 // trusts the cookie on a mutating request only when the body is JSON and the fetch is same-origin.
 // `App\Http\IdentityChain` folds whatever principals the container holds so this file does not grow a
 // nesting per identity package — and a fresh app, holding none, runs the bare handler.
-$response = IdentityChain::fromContainer($kernel->container())->handle($request, $handler);
+// NOTHING ESCAPES AS A FATAL. Measured on a fresh app before this line existed (greenhouse
+// decisions/0215, F3): a controller that threw answered 500 with a ZERO-BYTE body and `text/html`
+// whatever the caller's `Accept` said — and with `display_errors` on, which this app does not
+// control, the message, the file path and the whole stack trace went to the CLIENT.
+//
+// `ExceptionMiddleware` answers a rendered 500, JSON or HTML as the caller asked, and NEVER carries
+// the exception's message: the detail goes to the log, joined to the response by a reference the
+// body shows. `debug` in `config/app.php` adds the class, the file and the line — where it happened,
+// never what it said. It wraps the identity chain rather than sitting inside it, so a failure while
+// DECIDING who you are is rendered too.
+$failures = new ExceptionMiddleware($psr17, null, (bool) ($config['app']['debug'] ?? false));
+
+$response = $failures->process(
+    $request,
+    new class ($kernel, $handler) implements \Psr\Http\Server\RequestHandlerInterface {
+        public function __construct(
+            private readonly Kernel $kernel,
+            private readonly RequestHandler $handler,
+        ) {
+        }
+
+        public function handle(\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface
+        {
+            return IdentityChain::fromContainer($this->kernel->container())->handle($request, $this->handler);
+        }
+    },
+);
 
 // La emisión vive en `ResponseEmitter`: manda status + headers y luego el cuerpo. Si el cuerpo es un
 // `CallbackStream` lo STREAMEA (vence el output buffering y corre el callback), así una operación puede
