@@ -19,7 +19,7 @@
   ],
   "require": {
     "php": ">=8.3",
-    "milpa/app-runtime": ">=0.4 <1.0",
+    "milpa/app-runtime": ">=0.128.1 <1.0",
     "milpa/command": ">=0.5 <1.0",
     "milpa/console": ">=0.13 <1.0",
     "milpa/core": ">=0.6.2 <1.0",
@@ -37,6 +37,9 @@
   },
   "require-dev": {
     "friendsofphp/php-cs-fixer": "^3.65",
+    "milpa/agent": ">=0.42 <1.0",
+    "milpa/ai-gateway": ">=0.21 <1.0",
+    "milpa/event-store": ">=0.3 <1.0",
     "phpstan/phpstan": "^2.1",
     "phpunit/phpunit": "^11.5"
   },
