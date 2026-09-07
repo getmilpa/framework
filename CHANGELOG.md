@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.44.0](https://github.com/getmilpa/framework/compare/v0.43.0...v0.44.0) (2026-09-07)
+
+
+### Features
+
+* a founded app offers `sequence:run` ([#99](https://github.com/getmilpa/framework/issues/99)) ([48fd9fc](https://github.com/getmilpa/framework/commit/48fd9fc547a724be760b2e270ee357d98f70dcca))
+
 ## [0.43.0](https://github.com/getmilpa/framework/compare/v0.42.0...v0.43.0) (2026-09-07)
 
 
