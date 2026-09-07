@@ -74,4 +74,17 @@ return [
     // without a UI gets an empty provider rather than a missing class, and an app that later installs
     // a component-declaring plugin gains its rows without touching this list.
     Milpa\AppRuntime\Operations\ComponentOperations::class,
+
+    // A SEQUENCE THIS APP DECLARED, RUN THROUGH THE GATE (greenhouse decisions/0223).
+    //
+    // A deployment is the act of largest consequence a human authorises an agent to perform, and it
+    // could only be started from a terminal. `sequence:run` is the narrow operation that can reach the
+    // surface where a human authorises everything else: the name it takes is a KEY into the closed set
+    // an app declares in `config/sequences.php`, never a path, and it declares `agent:run` so the HTTP
+    // policy is consulted at all — an operation with no scopes is published to whoever reaches the
+    // server and nothing in the boot path objects.
+    //
+    // An app that declares no sequences gets an operation that answers «this app declares none», which
+    // is the honest empty state: not deploying is a legitimate way to be an app.
+    Milpa\AppRuntime\Operations\SequenceOperations::class,
 ];
