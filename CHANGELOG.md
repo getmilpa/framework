@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.43.0](https://github.com/getmilpa/framework/compare/v0.42.0...v0.43.0) (2026-09-07)
+
+
+### Features
+
+* nothing escapes this app as a fatal ([#96](https://github.com/getmilpa/framework/issues/96)) ([56e6ef3](https://github.com/getmilpa/framework/commit/56e6ef3c854fbc87c84ed4bcb0a6eff8366352f5))
+
 ## [0.42.0](https://github.com/getmilpa/framework/compare/v0.41.1...v0.42.0) (2026-09-06)
 
 
