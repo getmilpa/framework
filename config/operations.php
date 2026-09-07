@@ -59,11 +59,16 @@ return [
     // DOS archivos a la vez; `config:set` escribe una llave sin que nadie tenga que saber dónde vive
     // ni cómo se anida — la misma razón por la que `make` andamia un controller.
     //
-    // ESCRIBIR CARGA UN TECHO PRESTADO: el de lo más pesado que el criterio editado puede permitir,
-    // porque quien edita al juez no pesa menos que lo juzgado. Construida desde esta lista no recibe
-    // catálogo, así que lo presta de uno vacío — y GOV-05 hace que lo no clasificado cuente como el
-    // máximo de cada eje. Pide consentimiento en vez de saltárselo, que es el lado correcto para
-    // equivocarse; darle el catálogo real es otra rebanada, y está declarada.
+    // WRITING CARRIES A BORROWED CEILING: the heaviest thing the edited criterion can permit, because
+    // whoever edits the judge does not weigh less than what the judge governs. Built from this list
+    // it receives no catalogue, so it borrows from an empty one — GOV-05 makes that the maximum of
+    // every axis — and asks for consent rather than skipping it, the right side to err on. The real
+    // catalogue is handed over in a second pass, once this list is complete.
+    //
+    // THE ORDER OF THESE LINES DOES NOT DECIDE A CEILING (greenhouse decisions/0224). Two providers
+    // here borrow from each other — `config:set` folds the catalogue, `sequence:run` folds its
+    // declared steps — and the loan is solved as a fixed point from their floors, the same one in
+    // every order. Reordering this file changes how the catalogue is assembled and nothing else.
     Milpa\AppRuntime\Operations\ConfigOperations::class,
 
     // THE UI CATALOGUE — the agent asks what its own face is made of (greenhouse decisions/0214).
