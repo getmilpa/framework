@@ -74,4 +74,5 @@ return [
     // without a UI gets an empty provider rather than a missing class, and an app that later installs
     // a component-declaring plugin gains its rows without touching this list.
     Milpa\AppRuntime\Operations\ComponentOperations::class,
+    Milpa\AppRuntime\Operations\SequenceOperations::class,
 ];
