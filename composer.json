@@ -37,9 +37,6 @@
   },
   "require-dev": {
     "friendsofphp/php-cs-fixer": "^3.65",
-    "milpa/agent": ">=0.42 <1.0",
-    "milpa/ai-gateway": ">=0.21 <1.0",
-    "milpa/event-store": ">=0.3 <1.0",
     "phpstan/phpstan": "^2.1",
     "phpunit/phpunit": "^11.5"
   },
