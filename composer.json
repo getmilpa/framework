@@ -1,67 +1,67 @@
 {
-  "name": "milpa/framework",
-  "description": "The composer create-project starting point for a Milpa app: a runtime whose every capability is a declared Operation, reachable from the terminal, from MCP and from a TUI at once. No database, no web framework \u2014 an agent-operable substrate you extend with plugins.",
-  "type": "project",
-  "license": "Apache-2.0",
-  "keywords": [
-    "milpa",
-    "framework",
-    "ai-agents",
-    "mcp",
-    "cli",
-    "plugins"
-  ],
-  "authors": [
-    {
-      "name": "Rodrigo Vicente - TeamX Agency",
-      "homepage": "https://x.com/rodrigoteamx"
+    "name": "milpa/framework",
+    "description": "The composer create-project starting point for a Milpa app: a runtime whose every capability is a declared Operation, reachable from the terminal, from MCP and from a TUI at once. No database, no web framework — an agent-operable substrate you extend with plugins.",
+    "type": "project",
+    "license": "Apache-2.0",
+    "keywords": [
+        "milpa",
+        "framework",
+        "ai-agents",
+        "mcp",
+        "cli",
+        "plugins"
+    ],
+    "authors": [
+        {
+            "name": "Rodrigo Vicente - TeamX Agency",
+            "homepage": "https://x.com/rodrigoteamx"
+        }
+    ],
+    "require": {
+        "php": ">=8.3",
+        "milpa/app-runtime": ">=0.133.0 <1.0",
+        "milpa/command": ">=0.5 <1.0",
+        "milpa/console": ">=0.13 <1.0",
+        "milpa/core": ">=0.6.2 <1.0",
+        "milpa/live-tui": ">=0.4 <1.0",
+        "milpa/plugin": ">=0.8 <1.0",
+        "milpa/runtime": ">=0.9.1 <1.0",
+        "milpa/tool-runtime": ">=0.13 <1.0",
+        "nyholm/psr7": "^1.8",
+        "nyholm/psr7-server": "^1.1"
+    },
+    "conflict": {
+        "milpa/agent": "<0.5",
+        "milpa/ai-gateway": "<0.8",
+        "milpa/live-tui": "<0.4"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.65",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^11.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "App\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "bin/coa"
+    ],
+    "config": {
+        "sort-packages": true
+    },
+    "suggest": {
+        "milpa/agent": "Sessions that outlive the process: plan, todos, permissions and `coa chat`",
+        "milpa/ai-gateway": "Let the agent RUN: a model on the other side of `coa agent`",
+        "milpa/auth": "Identity: turns a Bearer into an actor with scopes",
+        "milpa/data": "Persistence for tokens and entities, with four backends",
+        "milpa/devtools": "Scaffolding and diagnosis: `coa make`, `coa validate`, `coa doctor`",
+        "milpa/mcp-server": "The same operations exposed to an external MCP client"
     }
-  ],
-  "require": {
-    "php": ">=8.3",
-    "milpa/app-runtime": ">=0.132.0 <1.0",
-    "milpa/command": ">=0.5 <1.0",
-    "milpa/console": ">=0.13 <1.0",
-    "milpa/core": ">=0.6.2 <1.0",
-    "milpa/live-tui": ">=0.4 <1.0",
-    "milpa/plugin": ">=0.8 <1.0",
-    "milpa/runtime": ">=0.9.1 <1.0",
-    "milpa/tool-runtime": ">=0.9 <1.0",
-    "nyholm/psr7": "^1.8",
-    "nyholm/psr7-server": "^1.1"
-  },
-  "conflict": {
-    "milpa/agent": "<0.5",
-    "milpa/ai-gateway": "<0.8",
-    "milpa/live-tui": "<0.4"
-  },
-  "require-dev": {
-    "friendsofphp/php-cs-fixer": "^3.65",
-    "phpstan/phpstan": "^2.1",
-    "phpunit/phpunit": "^11.5"
-  },
-  "autoload": {
-    "psr-4": {
-      "App\\": "src/"
-    }
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "App\\Tests\\": "tests/"
-    }
-  },
-  "bin": [
-    "bin/coa"
-  ],
-  "config": {
-    "sort-packages": true
-  },
-  "suggest": {
-    "milpa/agent": "Sessions that outlive the process: plan, todos, permissions and `coa chat`",
-    "milpa/ai-gateway": "Let the agent RUN: a model on the other side of `coa agent`",
-    "milpa/auth": "Identity: turns a Bearer into an actor with scopes",
-    "milpa/data": "Persistence for tokens and entities, with four backends",
-    "milpa/devtools": "Scaffolding and diagnosis: `coa make`, `coa validate`, `coa doctor`",
-    "milpa/mcp-server": "The same operations exposed to an external MCP client"
-  }
 }

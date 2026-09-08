@@ -71,7 +71,7 @@ jobs:
           # El rojo NO era una incompatibilidad real: era una enumeracion escondida donde nadie la
           # buscó. Un manifiesto no es el unico lugar donde un requisito se escribe como historia.
           composer require --dev --no-interaction --no-progress --prefer-dist \
-            "milpa/agent:>=0.7 <1.0" "milpa/ai-gateway:>=0.8 <1.0" "milpa/auth:>=0.3.4 <1.0" \
+            "milpa/agent:>=0.7 <1.0" "milpa/ai-gateway:>=0.22 <1.0" "milpa/auth:>=0.3.4 <1.0" \
             "milpa/data:>=0.2.2 <1.0" "milpa/devtools:>=0.12 <1.0" "milpa/mcp-server:>=0.4.3 <1.0"
       - name: License gate (runtime deps must be MIT / BSD / Apache-2.0 / ISC)
         run: |
