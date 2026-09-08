@@ -35,8 +35,8 @@ use Milpa\Runtime\Http\RouteProviderInterface;
  */
 #[PluginMetadata(
     version: '0.1.0',
-    author: 'Your Name',
-    site: 'https://example.com',
+    author: 'milpa/framework', // the skeleton's own — make it yours when you make the plugin yours
+    site: 'https://github.com/getmilpa/framework',
     name: 'HelloPlugin',
     type: 'Web',
 )]

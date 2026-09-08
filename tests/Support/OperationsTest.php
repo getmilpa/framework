@@ -104,15 +104,43 @@ final class OperationsTest extends TestCase
             self::assertContains($esperada, $nombres);
         }
 
-        // FRONTERA, PARTIDA DEL PISO (evidence/0103). `validate` y `make` los publica `milpa/devtools`
-        // y `agent` necesita la capacidad de agente: exigirlos junto con los `plugins.*` hacía que la
-        // medición del `AppRoot` —que es el motivo de esta prueba— se perdiera en un recién nacido.
+        // THE SKELETON LISTS ONLY WHAT IT SHIPS (greenhouse evidence/0565): `validate` and `make` are
+        // milpa/devtools', and the package DECLARES its provider in its manifest so `capabilities:enable`
+        // writes it into config/operations.php. Installed but not declared, the atoms are absent — the
+        // control; declared the way the enable writes them, they are offered — the measurement.
         if (OptIn::has(\Milpa\DevTools\Doctor\Repair::class)) {
-            self::assertContains('validate', $nombres);
-            self::assertContains('make', $nombres);
+            self::assertNotContains('make', $nombres, 'the stock list does not pre-list a class the skeleton does not ship');
+            self::assertContains('make', $this->namesOnceTheCapabilityDeclaredItsProvider(), 'what the manifest declares, enable writes, and the app offers');
         }
         if (OptIn::has(\Milpa\AiGateway\LlmService::class)) {
             self::assertContains('agent', $nombres);
+        }
+    }
+
+    /**
+     * The names the app offers once `milpa/devtools`' manifest provider is written into a copy of this
+     * app's config/operations.php — exactly what `capabilities:enable milpa/devtools` does on install.
+     *
+     * @return list<string>
+     */
+    private function namesOnceTheCapabilityDeclaredItsProvider(): array
+    {
+        $manifest = json_decode((string) file_get_contents($this->root() . '/vendor/milpa/devtools/composer.json'), true, 512, \JSON_THROW_ON_ERROR);
+        $declared = $manifest['extra']['milpa']['capability']['operations'] ?? [];
+        self::assertNotSame([], $declared, 'milpa/devtools declares the provider that carries its operations');
+
+        $copy = sys_get_temp_dir() . '/milpa-ops-declared-' . bin2hex(random_bytes(4));
+        mkdir($copy . '/config', 0o775, true);
+        copy($this->root() . '/config/operations.php', $copy . '/config/operations.php');
+        try {
+            $written = \Milpa\AppRuntime\Support\Capabilities::registerOperations($copy, $declared);
+            self::assertSame($declared, $written, 'the enable writes every provider the manifest names');
+            /** @var list<class-string> $list */
+            $list = require $copy . '/config/operations.php';
+
+            return array_map(static fn ($op): string => $op->name, Operations::declared(new DIContainer(), $list, $copy));
+        } finally {
+            exec('rm -rf ' . escapeshellarg($copy));
         }
     }
 

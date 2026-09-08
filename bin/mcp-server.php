@@ -14,17 +14,14 @@ require __DIR__ . '/../vendor/autoload.php';
 
 $root = \dirname(__DIR__);
 
-// Agent-ready (the MCP/tools surface) is wired in by default here — `milpa/tool-runtime` and
-// `milpa/mcp-server` moved from `require` to `suggest` in composer.json, so a stock
-// `composer create-project milpa/framework` app does NOT have these classes available. Probing with
-// class_exists() (default $autoload=true) is safe either way: it runs Composer's autoloader, which
-// simply reports "not found" when the packages are absent — no fatal, no warning. `::class` on an
-// imported name that isn't loadable is always safe too (it's resolved at compile time to a plain
-// string, no autoload triggered), so the `use` imports above never break when these packages are
-// missing. When absent, this prints guidance and exits 0 — an app with no agent-ready surface
-// enabled yet is the honest default, not an error.
+// The MCP surface is OPT-IN: `milpa/tool-runtime` ships with this app, `milpa/mcp-server` does not,
+// so a stock `composer create-project milpa/framework` app has no JsonRpcService. Probing with
+// class_exists() is safe either way — Composer's autoloader reports «not found» without a fatal — and
+// `::class` on an imported name that is not loadable resolves at compile time to a plain string. When
+// the package is absent this prints the one command that switches it on and exits 0: an app with no
+// MCP surface yet is the honest default, not an error.
 if (!\class_exists(ToolRegistry::class) || !\class_exists(JsonRpcService::class)) {
-    fwrite(STDERR, 'Agent-ready surface not enabled. Run: composer require milpa/tool-runtime milpa/mcp-server  (or: php bin/coa agent:enable)' . \PHP_EOL);
+    fwrite(STDERR, 'MCP surface not enabled. Run: php bin/coa capabilities:enable milpa/mcp-server  (or: composer require milpa/mcp-server)' . \PHP_EOL);
     exit(0);
 }
 
