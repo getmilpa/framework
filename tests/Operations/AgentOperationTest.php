@@ -131,9 +131,9 @@ final class AgentOperationTest extends TestCase
                 string $modelo,
                 callable $onStep,
                 array $history = [],
-                ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallGate $gate = null,
                 ?\Milpa\AiGateway\OptionTable $mesa = null,
-                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallRecorder $recorder = null,
                 ?\Milpa\AiGateway\PlanBoard $tablero = null,
             ): string {
                 $onStep();
@@ -220,9 +220,9 @@ final class AgentOperationTest extends TestCase
                 string $modelo,
                 callable $onStep,
                 array $history = [],
-                ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallGate $gate = null,
                 ?\Milpa\AiGateway\OptionTable $mesa = null,
-                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallRecorder $recorder = null,
                 ?\Milpa\AiGateway\PlanBoard $tablero = null,
             ): string {
                 static::$visto = ['proveedor' => $proveedor, 'llave' => $llave, 'modelo' => $modelo];
@@ -369,9 +369,9 @@ final class AgentOperationTest extends TestCase
                     string $modelo,
                     callable $onStep,
                     array $history = [],
-                    ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                    ?\Milpa\ToolRuntime\Gate\ToolCallGate $gate = null,
                     ?\Milpa\AiGateway\OptionTable $mesa = null,
-                    ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                    ?\Milpa\ToolRuntime\Gate\ToolCallRecorder $recorder = null,
                     ?\Milpa\AiGateway\PlanBoard $tablero = null,
                 ): string {
                     static::$visto = ['proveedor' => $proveedor, 'llave' => $llave, 'modelo' => $modelo];
@@ -572,9 +572,9 @@ final class AgentOperationTest extends TestCase
                 string $modelo,
                 callable $onStep,
                 array $history = [],
-                ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallGate $gate = null,
                 ?\Milpa\AiGateway\OptionTable $mesa = null,
-                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallRecorder $recorder = null,
                 ?\Milpa\AiGateway\PlanBoard $tablero = null,
             ): string {
                 $this->historialVisto = $history;
@@ -872,9 +872,9 @@ final class AgentOperationTest extends TestCase
                 string $modelo,
                 callable $onStep,
                 array $history = [],
-                ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallGate $gate = null,
                 ?\Milpa\AiGateway\OptionTable $mesa = null,
-                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallRecorder $recorder = null,
                 ?\Milpa\AiGateway\PlanBoard $tablero = null,
             ): string {
                 $this->historialVisto = $history;
@@ -1082,9 +1082,9 @@ final class AgentOperationTest extends TestCase
                 string $modelo,
                 callable $onStep,
                 array $history = [],
-                ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallGate $gate = null,
                 ?\Milpa\AiGateway\OptionTable $mesa = null,
-                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallRecorder $recorder = null,
                 ?\Milpa\AiGateway\PlanBoard $tablero = null,
             ): string {
                 // Tres pasos de trabajo, y al cuarto el humano dice «para».
@@ -1348,9 +1348,9 @@ final class AgentOperationTest extends TestCase
                 string $modelo,
                 callable $onStep,
                 array $history = [],
-                ?\Milpa\AiGateway\ToolCallGate $gate = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallGate $gate = null,
                 ?\Milpa\AiGateway\OptionTable $mesa = null,
-                ?\Milpa\AiGateway\ToolCallRecorder $recorder = null,
+                ?\Milpa\ToolRuntime\Gate\ToolCallRecorder $recorder = null,
                 ?\Milpa\AiGateway\PlanBoard $tablero = null,
             ): string {
                 $onStep();
