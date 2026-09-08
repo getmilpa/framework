@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.45.3](https://github.com/getmilpa/framework/compare/v0.45.2...v0.45.3) (2026-09-08)
+
+
+### Bug Fixes
+
+* what a day-one QA found on a fresh create-project ([#109](https://github.com/getmilpa/framework/issues/109)) ([d47790d](https://github.com/getmilpa/framework/commit/d47790da70eed2be0ea135daf3446263a56ec2b7))
+
 ## [0.45.2](https://github.com/getmilpa/framework/compare/v0.45.1...v0.45.2) (2026-09-08)
 
 
