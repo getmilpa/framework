@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.45.1](https://github.com/getmilpa/framework/compare/v0.45.0...v0.45.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* the welcome page names the governed runtime before the recipe ([#104](https://github.com/getmilpa/framework/issues/104)) ([94b8ec5](https://github.com/getmilpa/framework/commit/94b8ec5ef207be370b666b919530a1d85bc9cf45))
+
 ## [0.45.0](https://github.com/getmilpa/framework/compare/v0.44.0...v0.45.0) (2026-09-08)
 
 
