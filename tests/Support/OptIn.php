@@ -59,7 +59,7 @@ final class OptIn
         'Milpa\\AiGateway\\'  => 'milpa/ai-gateway:^0.8.2',
         'Milpa\\Auth\\'       => 'milpa/auth:^0.3.8',
         'Milpa\\Data\\'       => 'milpa/data:^0.2.4',
-        'Milpa\\DevTools\\'   => 'milpa/devtools:^0.13.0',
+        'Milpa\\DevTools\\'   => 'milpa/devtools:^0.28.0',
         'Milpa\\EventStore\\' => 'milpa/event-store',
         'Milpa\\McpServer\\'  => 'milpa/mcp-server:^0.4.5',
     ];

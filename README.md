@@ -408,6 +408,17 @@ An audit trail with holes is worse than none: it teaches you to trust an incompl
 event carries the surface it came in through, because the same operation arriving over HTTP and on
 the machine's own terminal does not always deserve the same answer.
 
+## Running the suite
+
+```bash
+vendor/bin/phpunit
+```
+
+It ends with «OK, but some tests were skipped!» on a fresh app, and that is the expected reading: the
+skipped tests measure opt-in capabilities — the agent, the model gateway, the generators, identity — and
+each skip names the package it waits for. Switch a capability on (`php bin/coa capabilities:enable …`)
+and its tests stop skipping. A failure is a different word, and the suite says it.
+
 ## What is opt-in, and why
 
 The box is deliberately small. Two examples of what it does **not** include:

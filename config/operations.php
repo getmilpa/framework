@@ -3,24 +3,25 @@
 declare(strict_types=1);
 
 /**
- * Las capacidades que esta app adopta de PAQUETES, no de plugins.
+ * The capabilities this app adopts from PACKAGES, not from plugins.
  *
- * Un plugin contribuye sus operaciones al arrancar; un paquete no arranca, así que lo que publica se
- * enlista aquí. La diferencia no es de mecanismo sino de ciclo de vida, y por eso son dos listas.
+ * A plugin contributes its operations when it boots; a package does not boot, so what it publishes is
+ * listed here. The difference is one of lifecycle, not mechanism, and that is why there are two lists.
  *
- * `DevToolsOperations` trae `validate` y `make`: validar un plugin y andamiar un controller o una
- * entidad. Es lo mínimo para que la primera hora en una app nueva no consista en escribir a mano lo
- * que el framework ya sabe generar.
+ * ── ONLY WHAT THIS APP SHIPS IS LISTED ──────────────────────────────────────────────────────────
  *
- * ── UNA CLASE QUE NO ESTÁ SE SALTA, NO TRUENA ───────────────────────────────────────────────────
+ * A capability you switch on declares its own provider here: `coa capabilities:enable milpa/devtools`
+ * writes `DevToolsOperations` (`validate`, `make`, `doctor`) into this list, because the package names it
+ * in its manifest. Pre-listing a class this app does not ship left a fresh app's static analysis red on
+ * day one (greenhouse evidence/0565). If you `composer require` a capability by hand, add its provider
+ * here by hand — or run `capabilities:enable`, which does both.
  *
- * El despachador comprueba `class_exists()` antes de construir cada proveedor. Importa por una razón
- * concreta y fechada: `DevToolsOperations` nació DESPUÉS de `milpa/devtools 0.8.0`, así que una
- * instalación contra esa versión no la tiene. En vez de reventar al arrancar, esta app lista cuatro
- * operaciones en vez de seis y sigue funcionando; al subir devtools, las gana sin tocar nada.
+ * ── A CLASS THAT IS NOT THERE IS SKIPPED, NEVER FATAL ───────────────────────────────────────────
  *
- * Es la degradación correcta para una lista declarativa: quien la escribió afirmó una intención, y
- * una intención que todavía no se puede cumplir no debería impedir arrancar.
+ * The dispatcher checks `class_exists()` before building each provider: an app-runtime older than a
+ * provider listed here boots with fewer operations instead of not booting. It is the right degradation
+ * for a declarative list — whoever wrote it stated an intention, and an intention that cannot be met yet
+ * should not stop the app from starting.
  *
  * @return list<class-string<\Milpa\Command\CommandProvider>>
  */
@@ -38,8 +39,6 @@ return [
     // On an app-runtime older than the group, `class_exists()` above skips it and the app keeps
     // booting — the documented degradation of this list, exercised on purpose.
     Milpa\AppRuntime\Operations\FoundationOperations::class,
-
-    Milpa\DevTools\Operations\DevToolsOperations::class,
 
     // El agente de esta app: `coa agent "..."`. Ve las mismas operaciones que un cliente MCP, y sin
     // API key configurada dice qué falta en vez de fingir una respuesta.

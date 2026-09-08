@@ -47,11 +47,11 @@ final class ApplicationTest extends TestCase
         self::assertStringContainsString('plugins:list', $r['texto']);
         self::assertStringContainsString('capabilities', $r['texto']);
 
-        // FRONTERA: `validate` y `make` los publica un paquete que esta app ADOPTA. Exigirlos aquí
-        // hacía que el piso de arriba se perdiera junto con ellos.
+        // THE SKELETON LISTS ONLY WHAT IT SHIPS (greenhouse evidence/0565): `make` reaches the help once
+        // `capabilities:enable milpa/devtools` writes the provider the package declares — never from a
+        // pre-listed class this app does not ship. Installed but not declared, the help does not offer it.
         if (OptIn::has(\Milpa\DevTools\Doctor\Repair::class)) {
-            self::assertStringContainsString('validate', $r['texto']);
-            self::assertStringContainsString('make', $r['texto']);
+            self::assertStringNotContainsString('  make ', $r['texto'], 'the stock help does not offer what the app has not declared');
         }
     }
 
