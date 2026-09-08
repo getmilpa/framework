@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.45.2](https://github.com/getmilpa/framework/compare/v0.45.1...v0.45.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* the welcome page asks for the session store, not the model gateway, before a recipe ([#106](https://github.com/getmilpa/framework/issues/106)) ([37c534b](https://github.com/getmilpa/framework/commit/37c534bf260a615a86dd723340e94ff869db76cb))
+
 ## [0.45.1](https://github.com/getmilpa/framework/compare/v0.45.0...v0.45.1) (2026-09-08)
 
 
