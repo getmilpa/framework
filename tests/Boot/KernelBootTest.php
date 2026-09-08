@@ -121,8 +121,9 @@ final class KernelBootTest extends TestCase
             \array_map('fclose', $pipes);
             \proc_close($process);
 
-            // Each offered command is one indented line: two spaces, the name, then its description.
-            \preg_match_all('/^  ([a-z][a-z0-9:._-]*)\s{2,}/mu', $output, $matches);
+            // Each offered command is one indented line — two spaces for an operation, four for a built-in
+            // such as `list` or `shell` — the name, then at least two spaces before its description.
+            \preg_match_all('/^ {2,4}([a-z][a-z0-9:._-]*) {2,}/mu', $output, $matches);
             self::$offered = \array_values(\array_unique($matches[1]));
             self::assertNotEmpty(self::$offered, 'coa listed no commands at all: ' . $output);
         }
