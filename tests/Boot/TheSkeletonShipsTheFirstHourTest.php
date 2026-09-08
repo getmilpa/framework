@@ -74,10 +74,11 @@ final class TheSkeletonShipsTheFirstHourTest extends TestCase
 
         $this->assertContains('recipe:apply', $offered, 'the recipe capability is wired in config/operations.php');
         $this->assertContains('capabilities:enable', $offered);
-        // THE BOOT-PROOF CONTROL: opting a provider in must not leak the operations of packages the
-        // app never installed — those still arrive by `composer require`, not by a config line.
-        $this->assertNotContains('agent:sessions', $offered, 'agent:sessions belongs to milpa/agent, which this skeleton does not install');
-        $this->assertNotContains('token:list', $offered, 'token:list belongs to milpa/auth, which this skeleton does not install');
+        // THE BOOT-PROOF CONTROL: opting a provider in must not leak the operations of packages the app
+        // never installed — those arrive by `composer require`, not by a config line. CI installs every
+        // opt-in as a dev dependency, so the assertion follows what THIS vendor holds, both ways.
+        $this->assertSame(Capabilities::installed('agent'), \in_array('agent:sessions', $offered, true), 'agent:sessions is offered exactly when milpa/agent is installed');
+        $this->assertSame(Capabilities::installed('identity'), \in_array('token:list', $offered, true), 'token:list is offered exactly when milpa/auth is installed');
     }
 
     public function testTheRouterServesARealFileItselfAndHandsTheRestToTheKernel(): void
