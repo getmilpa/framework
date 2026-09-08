@@ -24,6 +24,12 @@ $boot = require $root . '/config/boot.php';
 
 /** @var array<string, mixed> $config */
 $config = require $root . '/config/app.php';
+// What the machine wrote through a governed operation (`config:set`) lays over what the human wrote —
+// the same overlay `bin/coa` applies. Without it a consented change reached the terminal and not the
+// browser (greenhouse decisions/0216, point 4).
+if (class_exists(\Milpa\AppRuntime\Config\MachineOverlay::class)) {
+    $config = \Milpa\AppRuntime\Config\MachineOverlay::sobre($config, $root);
+}
 
 $kernel = Kernel::boot([
     'root' => $root,

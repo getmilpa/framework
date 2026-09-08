@@ -65,7 +65,7 @@ return [
      *
      * `compaction` decide cuándo una sesión larga resume lo viejo (P16.2). Los números dependen del
      * modelo: una ventana de 8k y una de 200k no se compactan igual, y por eso son config y no una
-     * constante. `keepRecent` conviene holgado — el resumen contesta «qué ha pasado» y sólo los turnos
+     * constante. `keepLast` conviene holgado — el resumen contesta «qué ha pasado» y sólo los turnos
      * íntegros contestan «en qué íbamos».
      *
      * ── `permissionWindow`: UNA OPINIÓN INICIAL, NO UNA DOCTRINA ────────────────────────────────
@@ -86,7 +86,7 @@ return [
      */
     // 'agent' => [
     //     'instructions' => 'Los precios de esta app van en centavos.',
-    //     'compaction' => ['maxTurns' => 40, 'keepRecent' => 12],
+    //     'compaction' => ['maxTurns' => 40, 'keepLast' => 12],
     //     'permissionWindow' => 'PT8H',
     //
     //     // QUÉ LLAMADAS AMERITAN UN SEGUNDO LECTOR ANTES DE PREGUNTARTE.

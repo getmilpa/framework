@@ -80,4 +80,8 @@ return [
     // a component-declaring plugin gains its rows without touching this list.
     Milpa\AppRuntime\Operations\ComponentOperations::class,
     Milpa\AppRuntime\Operations\SequenceOperations::class,
+    // A recipe ORIGINATES governed work (greenhouse decisions/0180, 0216): `recipe:apply` reads
+    // recipes/<name>.json and drives its foundation, its capabilities and its scaffolds through the
+    // same gate every operation passes. The skeleton ships one recipe (recipes/notes.json).
+    Milpa\AppRuntime\Operations\RecipeOperations::class,
 ];

@@ -69,6 +69,9 @@ final class HomeController
                    <code>Milpa\Runtime\Config</code> — edit it and reload.</p>
                 <section class="next" aria-labelledby="next-steps">
                     <h2 id="next-steps">Your first five minutes</h2>
+                    <p>Ask the app where it stands and what to do next — every step it names is a
+                       command it offers today, and the steps change as you take them:</p>
+                    <pre><code>php bin/coa house:start</code></pre>
                     <p>Do not guess what booted. Ask the app:</p>
                     <pre><code>php bin/coa list&#10;php bin/coa plugins:list</code></pre>
                     <p>What this app can do today — and what it could do next, each one already
@@ -77,9 +80,15 @@ final class HomeController
                     <p>Take a package name it lists under <code>available</code> and grow into it.
                        Ask first what it would run:</p>
                     <pre><code>php bin/coa capabilities:enable milpa/devtools --dry-run</code></pre>
+                    <p>Or let a recipe do the first hour for you — found the house on a domain, switch
+                       on what it needs and scaffold the first plugin, each step through the same gate
+                       (edit <code>recipes/notes.json</code> first, or copy it under another name):</p>
+                    <pre><code>php bin/coa recipe:apply --recipe=notes</code></pre>
                     <p>Then every operation on one screen, including whatever a capability just
                        added:</p>
                     <pre><code>php bin/coa shell</code></pre>
+                    <p>And see it in a browser — the URL it prints answers while it runs:</p>
+                    <pre><code>php bin/coa serve</code></pre>
                 </section>
             </body>
             </html>

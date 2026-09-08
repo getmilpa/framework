@@ -1,0 +1,28 @@
+{
+    "$comment": "A recipe ORIGINATES governed work: `php bin/coa recipe:apply --recipe=notes` founds the house on this domain, switches on the capabilities it needs and scaffolds the first plugin — every step through the same gate any operation passes (greenhouse decisions/0073, 0180, 0216). Edit the domain and the fields, or copy this file under another name.",
+    "foundation": {
+        "domain": "Personal notes",
+        "objective": "Keep short notes with a title and a body, and mark them done",
+        "boundaries": [
+            "one user, no sharing",
+            "no attachments"
+        ]
+    },
+    "requires": {
+        "capabilities": [
+            "milpa/data",
+            "milpa/devtools"
+        ]
+    },
+    "work": [
+        {
+            "op": "make",
+            "args": {
+                "what": "crud",
+                "plugin": "Notes",
+                "name": "Note",
+                "fields": "title:string:120, ?body:text, done:bool"
+            }
+        }
+    ]
+}
