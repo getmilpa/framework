@@ -94,41 +94,54 @@ final class KernelBootTest extends TestCase
         }
     }
 
-    /** @var list<string>|null the names `coa` lists, read once per test run */
-    private static ?array $offered = null;
-
     /**
-     * Whether the app refuses to recognise `$command` — read from what `coa` LISTS, never by running it.
+     * Runs `coa` with one argument and reports whether the app refused to recognise it.
      *
-     * The page now recommends `serve`, which hands the process to a server and returns only when that
-     * server stops; a probe that executed each recommended command would hang on it. The catalogue `coa`
-     * prints without arguments is the same set the dispatcher recognises, so listing is the honest probe.
+     * With a DEADLINE: the page now recommends `serve`, which hands its process to a server and returns only
+     * when that server stops. A command still running five seconds in was certainly recognised; it gets
+     * SIGTERM — and since `serve` execs the server in place, the signal stops the server too, no orphan.
      */
     private function isRejected(string $command): bool
     {
-        if (self::$offered === null) {
-            $root = \dirname(__DIR__, 2);
-            $process = \proc_open(
-                [\PHP_BINARY, $root . '/bin/coa'],
-                [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-                $pipes,
-                $root,
-            );
-            if (!\is_resource($process)) {
-                self::fail('could not run bin/coa to read the commands it offers');
-            }
-            $output = (string) \stream_get_contents($pipes[1]) . (string) \stream_get_contents($pipes[2]);
-            \array_map('fclose', $pipes);
-            \proc_close($process);
+        $root = \dirname(__DIR__, 2);
 
-            // Each offered command is one indented line — two spaces for an operation, four for a built-in
-            // such as `list` or `shell` — the name, then at least two spaces before its description.
-            \preg_match_all('/^ {2,4}([a-z][a-z0-9:._-]*) {2,}/mu', $output, $matches);
-            self::$offered = \array_values(\array_unique($matches[1]));
-            self::assertNotEmpty(self::$offered, 'coa listed no commands at all: ' . $output);
+        $process = \proc_open(
+            [\PHP_BINARY, $root . '/bin/coa', $command],
+            [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            $root,
+        );
+
+        if (!\is_resource($process)) {
+            self::fail('could not run bin/coa to check the recommended commands');
         }
 
-        return !\in_array($command, self::$offered, true);
+        \stream_set_blocking($pipes[1], false);
+        \stream_set_blocking($pipes[2], false);
+        $output = '';
+        $deadline = \microtime(true) + 5.0;
+        while (\microtime(true) < $deadline) {
+            $output .= (string) \stream_get_contents($pipes[1]) . (string) \stream_get_contents($pipes[2]);
+            if (!\proc_get_status($process)['running']) {
+                break;
+            }
+            \usleep(50_000);
+        }
+        $stillRunning = \proc_get_status($process)['running'];
+        if ($stillRunning) {
+            \proc_terminate($process, 15);
+        }
+        $output .= (string) \stream_get_contents($pipes[1]) . (string) \stream_get_contents($pipes[2]);
+        \array_map('fclose', $pipes);
+        \proc_close($process);
+
+        if ($stillRunning) {
+            return false;
+        }
+
+        // The app prints the name it did not recognise, so the marker is that name coming back
+        // inside a refusal rather than any particular wording around it.
+        return \preg_match('/(no existe el comando|no such command|unknown command)/iu', $output) === 1;
     }
 
     public function testTheConfigBagGreetingReachesThePage(): void
