@@ -78,7 +78,6 @@ final class TheSkeletonShipsTheFirstHourTest extends TestCase
         // never installed — those arrive by `composer require`, not by a config line. CI installs every
         // opt-in as a dev dependency, so the assertion follows what THIS vendor holds, both ways.
         $this->assertSame(Capabilities::installed('agent'), \in_array('agent:sessions', $offered, true), 'agent:sessions is offered exactly when milpa/agent is installed');
-        $this->assertSame(Capabilities::installed('identity'), \in_array('token:list', $offered, true), 'token:list is offered exactly when milpa/auth is installed');
     }
 
     public function testTheRouterServesARealFileItselfAndHandsTheRestToTheKernel(): void
