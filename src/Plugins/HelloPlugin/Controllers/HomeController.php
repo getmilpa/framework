@@ -82,10 +82,10 @@ final class HomeController
                     <pre><code>php bin/coa capabilities:enable milpa/devtools --dry-run</code></pre>
                     <p>Or let a recipe do the first hour for you — found the house on a domain, switch
                        on what it needs and scaffold the first plugin, each step through the same gate.
-                       A recipe runs through the governed runtime: the sessions that record its pauses
-                       and the gate each step passes, so switch those on first (<code>house:start</code>
-                       says so while they are missing):</p>
-                    <pre><code>php bin/coa capabilities:enable milpa/agent&#10;php bin/coa capabilities:enable milpa/ai-gateway</code></pre>
+                       A recipe runs through the governed runtime — the sessions that record its pauses —
+                       so switch that on first (<code>house:start</code> says so while it is missing). No
+                       model gateway is needed for a door you open yourself:</p>
+                    <pre><code>php bin/coa capabilities:enable milpa/agent</code></pre>
                     <p>Then apply it (edit <code>recipes/notes.json</code> first, or copy it under another
                        name). It pauses for your consent before each step that changes something — answer
                        with <code>agent:answer</code> and call it again:</p>
