@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.45.0](https://github.com/getmilpa/framework/compare/v0.44.0...v0.45.0) (2026-09-08)
+
+
+### Features
+
+* the first hour in the skeleton — recipe:apply wired, a real recipe, the router, the overlay on HTTP ([#102](https://github.com/getmilpa/framework/issues/102)) ([d651f64](https://github.com/getmilpa/framework/commit/d651f64a1c9c6394d29692a06f739243353982a3))
+
 ## [0.44.0](https://github.com/getmilpa/framework/compare/v0.43.0...v0.44.0) (2026-09-07)
 
 
