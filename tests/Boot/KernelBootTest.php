@@ -94,7 +94,13 @@ final class KernelBootTest extends TestCase
         }
     }
 
-    /** Runs `coa` with one argument and reports whether the app refused to recognise it. */
+    /**
+     * Runs `coa` with one argument and reports whether the app refused to recognise it.
+     *
+     * With a DEADLINE: the page now recommends `serve`, which hands its process to a server and returns only
+     * when that server stops. A command still running five seconds in was certainly recognised; it gets
+     * SIGTERM — and since `serve` execs the server in place, the signal stops the server too, no orphan.
+     */
     private function isRejected(string $command): bool
     {
         $root = \dirname(__DIR__, 2);
@@ -110,9 +116,28 @@ final class KernelBootTest extends TestCase
             self::fail('could not run bin/coa to check the recommended commands');
         }
 
-        $output = (string) \stream_get_contents($pipes[1]) . (string) \stream_get_contents($pipes[2]);
+        \stream_set_blocking($pipes[1], false);
+        \stream_set_blocking($pipes[2], false);
+        $output = '';
+        $deadline = \microtime(true) + 5.0;
+        while (\microtime(true) < $deadline) {
+            $output .= (string) \stream_get_contents($pipes[1]) . (string) \stream_get_contents($pipes[2]);
+            if (!\proc_get_status($process)['running']) {
+                break;
+            }
+            \usleep(50_000);
+        }
+        $stillRunning = \proc_get_status($process)['running'];
+        if ($stillRunning) {
+            \proc_terminate($process, 15);
+        }
+        $output .= (string) \stream_get_contents($pipes[1]) . (string) \stream_get_contents($pipes[2]);
         \array_map('fclose', $pipes);
         \proc_close($process);
+
+        if ($stillRunning) {
+            return false;
+        }
 
         // The app prints the name it did not recognise, so the marker is that name coming back
         // inside a refusal rather than any particular wording around it.
