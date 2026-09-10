@@ -7,6 +7,7 @@ use Milpa\Runtime\Http\ExceptionMiddleware;
 use Milpa\Runtime\Http\RequestHandler;
 use Milpa\Runtime\Http\ResponseEmitter;
 use Milpa\Runtime\Kernel;
+use Milpa\Runtime\Observability\ErrorLogLogger;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7Server\ServerRequestCreator;
 
@@ -38,11 +39,24 @@ if (class_exists(\Milpa\AppRuntime\Config\SecretOverlay::class)) {
     $config = \Milpa\AppRuntime\Config\SecretOverlay::sobre($config, $root);
 }
 
+// THE APP'S LOG, which is what makes the 500 page below tell the truth. `ErrorLogLogger` writes
+// through PHP's own `error_log()` — the destination this deployment already configured, whatever it
+// is: php-fpm's error log, the web server's, the console under `php -S`, stdout in a container. It
+// carries a `warning` floor, so a working app's narration does not bury the one `error` line a 500's
+// reference points at; `new ErrorLogLogger(LogLevel::DEBUG)` if you want the narration.
+//
+// It is passed HERE, to the kernel, rather than only to the middleware, because this is the logger
+// the whole app then shares — the kernel registers it under `Psr\Log\LoggerInterface` and a plugin
+// asks the container for the contract. Swap this line for your own PSR-3 logger and everything that
+// logs follows, including the failure path below (greenhouse decisions/0286).
+$logger = new ErrorLogLogger();
+
 $kernel = Kernel::boot([
     'root' => $root,
     'plugins' => $boot['plugins'],
     'config' => $config,
     'container' => $boot['container'],
+    'logger' => $logger,
 ]);
 
 // The kernel goes INTO the container, here as in `bin/coa`: the operation layer resolves what
@@ -82,7 +96,12 @@ $handler = new RequestHandler($kernel, $psr17);
 // body shows. `debug` in `config/app.php` adds the class, the file and the line — where it happened,
 // never what it said. It wraps the identity chain rather than sitting inside it, so a failure while
 // DECIDING who you are is rendered too.
-$failures = new ExceptionMiddleware($psr17, null, (bool) ($config['app']['debug'] ?? false));
+//
+// THE LOGGER IS NOT `null` HERE, AND THAT USED TO BE THE WHOLE DEFECT. Measured on a fresh app
+// (greenhouse decisions/0286): the body said «the detail is in this app's log» and the reference it
+// showed appeared in ZERO files, because this line passed `null`. A page that names a log there is no
+// log for is worse than one that says nothing — it sends whoever reads it looking for a file.
+$failures = new ExceptionMiddleware($psr17, $logger, (bool) ($config['app']['debug'] ?? false));
 
 $response = $failures->process(
     $request,
