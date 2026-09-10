@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.49.0](https://github.com/getmilpa/framework/compare/v0.48.1...v0.49.0) (2026-09-10)
+
+
+### Features
+
+* declare the framework operations, and require the app-runtime that owns them ([#125](https://github.com/getmilpa/framework/issues/125)) ([4c30b59](https://github.com/getmilpa/framework/commit/4c30b59ac2261afa8f1a6003fcbb0fe0a2808b49))
+
 ## [0.48.1](https://github.com/getmilpa/framework/compare/v0.48.0...v0.48.1) (2026-09-10)
 
 
