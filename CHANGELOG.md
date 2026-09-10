@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.48.1](https://github.com/getmilpa/framework/compare/v0.48.0...v0.48.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* track composer.json and the tools an app runs ([#123](https://github.com/getmilpa/framework/issues/123)) ([aa710ea](https://github.com/getmilpa/framework/commit/aa710ea500dac62d8785855a9bf42c7c52da94ec))
+
 ## [0.48.0](https://github.com/getmilpa/framework/compare/v0.47.1...v0.48.0) (2026-09-10)
 
 
