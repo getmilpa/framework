@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.47.0](https://github.com/getmilpa/framework/compare/v0.46.2...v0.47.0) (2026-09-10)
+
+
+### Features
+
+* **operations:** the skeleton lists the stack reader, so a fresh app can see what its plugins declared ([#117](https://github.com/getmilpa/framework/issues/117)) ([cfe158a](https://github.com/getmilpa/framework/commit/cfe158a4c2e60c454753513742bc621e213bb963))
+
 ## [0.46.2](https://github.com/getmilpa/framework/compare/v0.46.1...v0.46.2) (2026-09-10)
 
 
