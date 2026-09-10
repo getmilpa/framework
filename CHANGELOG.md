@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.46.2](https://github.com/getmilpa/framework/compare/v0.46.1...v0.46.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **security:** the unjudgeable is refused even when a policy exists, and consent is ASKED ([#115](https://github.com/getmilpa/framework/issues/115)) ([24f4c3a](https://github.com/getmilpa/framework/commit/24f4c3af8c0392d887659b06710276c1cd34e8dc))
+
 ## [0.46.1](https://github.com/getmilpa/framework/compare/v0.46.0...v0.46.1) (2026-09-10)
 
 
