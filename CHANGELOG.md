@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.46.0](https://github.com/getmilpa/framework/compare/v0.45.3...v0.46.0) (2026-09-10)
+
+
+### Features
+
+* apply the secret overlay at the HTTP door, and keep its file out of git ([#111](https://github.com/getmilpa/framework/issues/111)) ([058f9a3](https://github.com/getmilpa/framework/commit/058f9a366fe19fb5e1c641f797e05a622956694f))
+
 ## [0.45.3](https://github.com/getmilpa/framework/compare/v0.45.2...v0.45.3) (2026-09-08)
 
 
