@@ -42,6 +42,26 @@ final class TheHouseRecordsWhichFrameworkItWasBornFromTest extends TestCase
         require_once self::root() . '/tools/stamp-framework.php';
     }
 
+    /**
+     * 🚨 THE FILE THAT CARRIES THE SKELETON'S OWN WIRING IS TRACKED, and it was not.
+     *
+     * Measured the first time a real diff was taken between two published releases: 0.47.1 → 0.48.0
+     * changed ZERO tracked files, while the actual change of that release was `composer.json` gaining
+     * the `post-create-project-cmd` that writes the birth record, plus `tools/stamp-framework.php`
+     * itself. A reconciliation would have told a house «nothing to reconcile» about the very release
+     * that gave it the ability to reconcile (greenhouse decisions/0294).
+     */
+    public function testTheTrackedSetIncludesComposerJsonAndTheToolsAnAppRuns(): void
+    {
+        self::stamp();
+        $tracked = \FrameworkStamp::hashes(self::root());
+
+        self::assertArrayHasKey('composer.json', $tracked, 'the file a house edits first and the skeleton changes most consequentially');
+        self::assertArrayHasKey('tools/stamp-framework.php', $tracked, 'an app runs the tools; a newer one has to be offerable');
+        self::assertArrayHasKey('public/index.php', $tracked, 'and the entry point, which was always there');
+        self::assertArrayNotHasKey('phpunit.xml', $tracked, 'the skeleton\'s own harness is not something a house diverges from');
+    }
+
     /** The shipped file says which framework the tree is, and release-please is what bumps it. */
     public function testTheShippedFileCarriesTheVersionAndNoBirthRecord(): void
     {

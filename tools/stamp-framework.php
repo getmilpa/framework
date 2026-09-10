@@ -33,9 +33,10 @@ declare(strict_types=1);
  * hashes are written HERE, at the one moment they are knowable, because afterwards the original bytes
  * are gone.
  *
- * Only files a HOUSE can edit are recorded: the entry points, the config, the starter plugin, the
- * runner. Not the tests, not the CI, not the docs — those are the skeleton's own tooling, and an app
- * that deletes them has not diverged from anything it will ever be offered.
+ * Only files a HOUSE can edit AND the skeleton may change are recorded: `composer.json`, the entry
+ * points, the config, the starter plugin, the runner, and the tools an app actually runs. Not the
+ * tests, not the CI, not the docs — an app that deletes those has not diverged from anything it will
+ * ever be offered.
  */
 final class FrameworkStamp
 {
@@ -47,6 +48,17 @@ final class FrameworkStamp
      * that looks like «nothing changed».
      */
     private const array TRACKED = [
+        // 🚨 `composer.json` AND `tools/` WERE MISSING, and the omission was measured the first time a
+        // real diff was taken: between 0.47.1 and 0.48.0, ZERO tracked files changed — while the actual
+        // change of that release was `composer.json` gaining the `post-create-project-cmd` that writes
+        // this very record, plus this script under `tools/`. A reconciliation would have told a house
+        // «nothing to reconcile» about the release that gave it the ability to reconcile at all.
+        //
+        // `composer.json` is the file a house edits FIRST (its name, its requires) and the one the
+        // skeleton changes most consequentially (dependency floors, autoload, scripts). It will
+        // essentially always read as customized — which is correct: it is the file that most needs a
+        // diff, not one to hide (greenhouse decisions/0294).
+        'composer.json',
         'bin/*',
         'config/*.php',
         'public/*.php',
@@ -55,6 +67,7 @@ final class FrameworkStamp
         'src/*/*/*.php',
         'src/*/*/*/*.php',
         'recipes/*.json',
+        'tools/*',
     ];
 
     public static function main(string $root): int
