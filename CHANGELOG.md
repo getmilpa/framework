@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.47.1](https://github.com/getmilpa/framework/compare/v0.47.0...v0.47.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* the 500 page points at a log that exists ([#119](https://github.com/getmilpa/framework/issues/119)) ([6781a8d](https://github.com/getmilpa/framework/commit/6781a8d8edcfa2695ca4fd84cee5f02d36201bc6))
+
 ## [0.47.0](https://github.com/getmilpa/framework/compare/v0.46.2...v0.47.0) (2026-09-10)
 
 
