@@ -43,7 +43,13 @@ done
 
 # 3 · Y DICE CÓMO CRECER. Sin esto, el corte es honesto y además inútil: la app calla lo que no puede
 # hacer y tampoco dice qué instalar para poder.
-php bin/coa capabilities 2>&1 | grep -q 'composer require milpa/agent' \
+#
+# EL CAMINO ES EL GOBERNADO, y esta puerta pedía el de antes. Pedía `composer require milpa/agent` —
+# la salida a mano— cuando la casa ya había reemplazado eso por `capabilities:enable`, que instala
+# la capacidad DESDE la app y deja rastro (greenhouse decisions/0193, decisions/0194). El catálogo
+# tenía razón y la puerta estaba caduca; subir la restricción de app-runtime fue lo que lo destapó
+# (greenhouse decisions/0267).
+php bin/coa capabilities 2>&1 | grep -q 'coa capabilities:enable milpa/agent' \
   || { echo "no enseña el camino"; exit 1; }
 
 echo "tiny ok: arranca, no promete lo que no puede, y dice cómo crecer"

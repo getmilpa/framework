@@ -17,3 +17,8 @@
 # directorios vacíos, y una app sin `var/` no tiene dónde escribir su primera sesión.
 var/*
 !var/.gitignore
+
+# The machine's secrets — a credential written by `provider:declare`, which refuses to write at all
+# in a repository that would commit it. Its sibling `.milpa/agent.json` IS committed on purpose:
+# that one is the acta trail, and this one cannot travel (greenhouse decisions/0267).
+/.milpa/secrets.json
