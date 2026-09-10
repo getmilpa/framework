@@ -16,6 +16,9 @@ namespace App\Tests\Http;
 
 use Milpa\Command\Effect\Authority;
 use Milpa\Command\Effect\EffectProfile;
+use Milpa\Command\Effect\Externality;
+use Milpa\Command\Effect\Reversibility;
+use Milpa\Command\Effect\Subject;
 use Milpa\Command\Effect\Mutation;
 use Milpa\Command\Operation;
 use App\Plugins\OperationsHttpPlugin\OperationsHttpPlugin;
@@ -45,17 +48,44 @@ final class ConsentDemandsIdentityAtBootTest extends TestCase
     public function testAnOperationThatOnlyDemandsConsentIsRefusedWithoutAPolicy(): void
     {
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('exigen identidad o consentimiento (secret:write)');
+        $this->expectExceptionMessage('exigen consentimiento y no declaran scope ni permiso (secret:write)');
 
         $this->assertGuarded([$this->consenting('secret:write')], hayPolitica: false);
     }
 
-    /** With a policy to judge it, the same operation is publishable — that is what a policy is for. */
-    public function testWithAPolicyTheSameOperationIsPublished(): void
+    /**
+     * 🚨 A POLICY DOES NOT MAKE IT PUBLISHABLE, and this assertion said the opposite two hours ago.
+     *
+     * I wrote it on incomplete measurement: «with a policy to judge it, the same operation is
+     * publishable — that is what a policy is for». Then I measured the attack on cattle WITH a policy
+     * registered, and it went through — two same-origin POSTs, no session, and `agent.baseUrl` pointed
+     * at the caller's server (greenhouse decisions/0278).
+     *
+     * A POLICY CAN ONLY EXACT WHAT THE OPERATION DECLARES. One that demands consent and declares no
+     * scope and no permission hands it nothing to match, so the policy's presence is irrelevant: there
+     * is no rule for it to apply. The refusal has to come first.
+     */
+    public function testAPolicyDoesNotMakeAnUnjudgeableOperationPublishable(): void
     {
-        $this->assertGuarded([$this->consenting('secret:write')], hayPolitica: true);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('ninguna Milpa\Command\OperationHttpPolicy puede juzgarlas');
 
-        self::assertTrue(true, 'no refusal: somebody can judge who is calling');
+        $this->assertGuarded([$this->consenting('secret:write')], hayPolitica: true);
+    }
+
+    /** And one that DECLARES a scope is publishable with a policy — that is what a policy is for. */
+    public function testAScopedOperationIsPublishableWithAPolicy(): void
+    {
+        $this->assertGuarded([
+            new Operation(
+                name: 'scoped:op',
+                description: 'declares what a policy can exact',
+                handler: static fn (): array => ['ok' => true],
+                scopes: ['some:scope'],
+            ),
+        ], hayPolitica: true);
+
+        self::assertTrue(true, 'no refusal: the policy has a rule to apply');
     }
 
     /** A scope alone still counts, as it always did — this widened the rule, it did not replace it. */
@@ -75,22 +105,37 @@ final class ConsentDemandsIdentityAtBootTest extends TestCase
     }
 
     /**
-     * AND AN OPERATION THAT DEMANDS NEITHER IS STILL FREE TO PUBLISH.
+     * AND A READ THAT CLASSIFIED ITSELF AS HARMLESS IS STILL FREE TO PUBLISH.
      *
      * The control for the widening: a read that asks nothing of the caller must not start needing a
-     * policy, or every app that exposes one breaks on upgrade for no gain.
+     * policy, or every app exposing one breaks on upgrade for no gain.
+     *
+     * 🚨 IT DECLARES ITS CEILING, AND THE FIRST VERSION OF THIS TEST DID NOT — which made it fail and
+     * taught the distinction. An operation with NO `EffectProfile` does not «demand nothing»: GOV-05
+     * makes an unclassified ceiling count as the MAXIMUM, so `Consent` demands consent for it, and the
+     * guard refuses it. That is the doctrine working, not the guard over-reaching — measured on a real
+     * app with milpa/admin and milpa/agent-workspace, where ZERO operations are unclassified, because
+     * this family classifies. «Declares nothing» and «demands nothing» are different facts, and this
+     * test conflated them (greenhouse decisions/0279).
      */
-    public function testAnOperationThatDemandsNothingNeedsNoPolicy(): void
+    public function testAReadThatClassifiedItselfAsHarmlessNeedsNoPolicy(): void
     {
         $this->assertGuarded([
             new Operation(
                 name: 'plain:read',
-                description: 'asks nothing of the caller',
+                description: 'asks nothing of the caller, and says so on every axis',
                 handler: static fn (): array => ['ok' => true],
+                effects: new EffectProfile(
+                    mutation: Mutation::None,
+                    externality: Externality::None,
+                    reversibility: Reversibility::NotApplicable,
+                    authority: Authority::Read,
+                    subject: Subject::None,
+                ),
             ),
         ], hayPolitica: false);
 
-        self::assertTrue(true, 'no refusal: nothing to protect');
+        self::assertTrue(true, 'no refusal: nothing to protect, and it said so');
     }
 
     private function consenting(string $name): Operation

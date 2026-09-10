@@ -21,6 +21,7 @@ use Milpa\Interfaces\Event\MilpaEventDispatcherInterface;
 use Milpa\Console\FileConfirmTokenStore;
 use Milpa\Console\Http\HttpProjector;
 use Milpa\Command\OperationHttpPolicy;
+use Milpa\Console\Consent;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
 use Milpa\Runtime\Http\RouteProviderInterface;
@@ -206,12 +207,24 @@ class OperationsHttpPlugin implements PluginInterface, RouteProviderInterface
      * Se comprueba al ARRANCAR y no al atender: la lista de expuestos ya se conoce, así que el error
      * puede llegarle a quien configuró en vez de a quien llamó.
      *
-     * 🚨 EXIGIR CONSENTIMIENTO CUENTA, y su ausencia aquí fue un agujero real. Esta comprobación leía
-     * dos cosas —`scopes` y `permission`— y `provider:declare` no declaraba ninguna: exigía FIRMA, que
-     * es lo que lee el CLI. Así que pasó de largo, y su superficie HTTP convirtió «necesita tu firma»
-     * en «necesita un token que yo mismo te doy». Medido: dos POST del mismo origen, sin sesión ni
-     * principal ni firma, escribieron una credencial de proveedor
-     * (greenhouse decisions/0274, cerrado en general aquí, decisions/0275).
+     * 🚨 SE LE PREGUNTA A {@see Consent}, NO SE RE-DERIVA. Y las dos versiones anteriores de esta
+     * comprobación son la lección.
+     *
+     * Leía `scopes` y `permission`, y `provider:declare` no declaraba ninguna: exigía FIRMA, que es lo
+     * que lee el CLI. Pasó de largo, y su superficie HTTP convirtió «necesita tu firma» en «necesita un
+     * token que yo mismo te doy» — dos POST del mismo origen escribieron una credencial
+     * (greenhouse decisions/0274, decisions/0275).
+     *
+     * Entonces agregué `requiresConfirmation`. Y `config:set` **siguió pasando**, porque su
+     * consentimiento no se DECLARA: se DERIVA de su techo por la regla S2 (`decisions/0019`,
+     * `decisions/0028`). Medido en ganado: dos POST del mismo origen, sin sesión, cambiaron
+     * `agent.baseUrl` — **a dónde habla el agente** —, así que todo el contexto que manda se iría al
+     * servidor de quien lo hiciera. Peor que la credencial (`decisions/0278`).
+     *
+     * **Una guarda que re-deriva una decisión de la que otro componente es dueño se le va a separar.**
+     * `Consent::demanded()` es esa autoridad — la misma que el CLI consulta para pedir `--sign` — y lee
+     * `requiresConfirmation` PRIMERO y la regla S2 después. Preguntarle en vez de reconstruirla es lo
+     * que hace que esta guarda y el CLI no puedan discrepar.
      *
      * **Una compuerta que está bien en una superficie y ausente en la otra está a la altura de la más
      * baja.** Si el CLI pide una firma, un anfitrión HTTP tiene que tener a alguien que juzgue quién
@@ -228,13 +241,37 @@ class OperationsHttpPlugin implements PluginInterface, RouteProviderInterface
      */
     private function assertGuarded(array $expuestas, bool $hayPolitica): void
     {
+        // 🚨 LO INJUZGABLE SE REFUSA AUNQUE HAYA POLÍTICA, y esa es la corrección más grande.
+        //
+        // Una política sólo puede exigir lo que la operación DECLARA. Una que pide consentimiento y no
+        // declara scope ni permiso no le da nada que juzgar — así que tener política no la protege.
+        // Medido en ganado CON política registrada: dos POST del mismo origen, sin sesión, cambiaron
+        // `agent.baseUrl` (greenhouse decisions/0278).
+        $injuzgables = [];
+        foreach ($expuestas as $operacion) {
+            if ($operacion->scopes === [] && $operacion->permission === null && Consent::demanded($operacion)) {
+                $injuzgables[] = $operacion->name;
+            }
+        }
+        if ($injuzgables !== []) {
+            throw new \RuntimeException(
+                'config/http.php expone operaciones que exigen consentimiento y no declaran scope ni permiso ('
+                . implode(', ', $injuzgables) . '): ninguna ' . OperationHttpPolicy::class . ' puede juzgarlas, '
+                . 'porque una política sólo exige lo que la operación declara. Declárales un scope o quítalas de la lista.',
+            );
+        }
+
         if ($hayPolitica) {
             return;
         }
 
         $protegidas = [];
         foreach ($expuestas as $operacion) {
-            if ($operacion->scopes !== [] || $operacion->permission !== null || $operacion->requiresConfirmation) {
+            // Los scopes y el permiso siguen contando por sí solos: una operación con scope necesita
+            // política aunque no pida consentimiento. Y el consentimiento se PREGUNTA, con argumentos
+            // vacíos, que es la pregunta correcta al arrancar: «¿esta operación pide consentimiento?»,
+            // no «¿lo pide para estos argumentos?».
+            if ($operacion->scopes !== [] || $operacion->permission !== null || Consent::demanded($operacion)) {
                 $protegidas[] = $operacion->name;
             }
         }
