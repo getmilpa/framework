@@ -30,6 +30,13 @@ $config = require $root . '/config/app.php';
 if (class_exists(\Milpa\AppRuntime\Config\MachineOverlay::class)) {
     $config = \Milpa\AppRuntime\Config\MachineOverlay::sobre($config, $root);
 }
+// And the machine's secrets last — the most specific thing anybody declared, and the only one that
+// could not have been declared anywhere else. This file is gitignored: `config/app.php` is the file a
+// person opens and `.milpa/agent.json` travels with the repository, so before this destination existed
+// a credential had to go to git or to a file nothing read (greenhouse decisions/0267).
+if (class_exists(\Milpa\AppRuntime\Config\SecretOverlay::class)) {
+    $config = \Milpa\AppRuntime\Config\SecretOverlay::sobre($config, $root);
+}
 
 $kernel = Kernel::boot([
     'root' => $root,
