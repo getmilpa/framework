@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.48.0](https://github.com/getmilpa/framework/compare/v0.47.1...v0.48.0) (2026-09-10)
+
+
+### Features
+
+* a house records which framework it was born from, and the original bytes ([#121](https://github.com/getmilpa/framework/issues/121)) ([7d0cde0](https://github.com/getmilpa/framework/commit/7d0cde0e0a2730154ceda054e265b9b82a863312))
+
 ## [0.47.1](https://github.com/getmilpa/framework/compare/v0.47.0...v0.47.1) (2026-09-10)
 
 
