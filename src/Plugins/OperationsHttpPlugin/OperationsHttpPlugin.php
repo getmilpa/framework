@@ -206,6 +206,24 @@ class OperationsHttpPlugin implements PluginInterface, RouteProviderInterface
      * Se comprueba al ARRANCAR y no al atender: la lista de expuestos ya se conoce, así que el error
      * puede llegarle a quien configuró en vez de a quien llamó.
      *
+     * 🚨 EXIGIR CONSENTIMIENTO CUENTA, y su ausencia aquí fue un agujero real. Esta comprobación leía
+     * dos cosas —`scopes` y `permission`— y `provider:declare` no declaraba ninguna: exigía FIRMA, que
+     * es lo que lee el CLI. Así que pasó de largo, y su superficie HTTP convirtió «necesita tu firma»
+     * en «necesita un token que yo mismo te doy». Medido: dos POST del mismo origen, sin sesión ni
+     * principal ni firma, escribieron una credencial de proveedor
+     * (greenhouse decisions/0274, cerrado en general aquí, decisions/0275).
+     *
+     * **Una compuerta que está bien en una superficie y ausente en la otra está a la altura de la más
+     * baja.** Si el CLI pide una firma, un anfitrión HTTP tiene que tener a alguien que juzgue quién
+     * llama.
+     *
+     * Y ESTA GUARDA NO PUEDE VER SI UN HANDLER SE NIEGA SOLO. `session:own` no necesita política —su
+     * handler lee la autorización concedida y se niega sin ella, porque ahí la firma es el payload y no
+     * una compuerta— pero eso vive en el CUERPO, no en la declaración. Así que se refusa sobre lo que
+     * se declara, y el costo para un anfitrión que quiera exponer una así es una línea de config, no
+     * una sorpresa en producción. Medido sobre una app real con admin y agent-workspace: el ensanche
+     * atrapa CERO operaciones hoy — cuesta nada y caza la próxima.
+     *
      * @param list<Operation> $expuestas
      */
     private function assertGuarded(array $expuestas, bool $hayPolitica): void
@@ -216,14 +234,15 @@ class OperationsHttpPlugin implements PluginInterface, RouteProviderInterface
 
         $protegidas = [];
         foreach ($expuestas as $operacion) {
-            if ($operacion->scopes !== [] || $operacion->permission !== null) {
+            if ($operacion->scopes !== [] || $operacion->permission !== null || $operacion->requiresConfirmation) {
                 $protegidas[] = $operacion->name;
             }
         }
 
         if ($protegidas !== []) {
             throw new \RuntimeException(
-                'config/http.php expone operaciones que exigen identidad (' . implode(', ', $protegidas) . ') '
+                'config/http.php expone operaciones que exigen identidad o consentimiento ('
+                . implode(', ', $protegidas) . ') '
                 . 'y esta app no registró un ' . OperationHttpPolicy::class . '. '
                 . 'Registra uno —milpa/admin publica el que usa milpa/auth— o quita esas de la lista.',
             );
