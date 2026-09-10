@@ -38,6 +38,14 @@ return [
     //
     // On an app-runtime older than the group, `class_exists()` above skips it and the app keeps
     // booting — the documented degradation of this list, exercised on purpose.
+    // WHAT THIS HOUSE WAS BORN FROM, AND WHAT A NEWER SKELETON WOULD DO TO IT. `framework:provenance`
+    // and `framework:diff` read; `framework:apply` writes the files this app boots from, declares
+    // itself Privileged over something Executable, and carries a scope — so no host can expose it over
+    // HTTP without a policy to judge the caller (greenhouse decisions/0295).
+    //
+    // Declared here, in the app, because these operations only make sense for a house created FROM this
+    // skeleton — which is exactly what `.milpa/framework.json` records.
+    Milpa\AppRuntime\Operations\FrameworkOperations::class,
     Milpa\AppRuntime\Operations\FoundationOperations::class,
 
     // El agente de esta app: `coa agent "..."`. Ve las mismas operaciones que un cliente MCP, y sin
