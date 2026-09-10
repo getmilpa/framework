@@ -83,4 +83,16 @@ return [
     // recipes/<name>.json and drives its foundation, its capabilities and its scaffolds through the
     // same gate every operation passes. The skeleton ships one recipe (recipes/notes.json).
     Milpa\AppRuntime\Operations\RecipeOperations::class,
+
+    // WHAT BACKING SERVICES THE PLUGINS DECLARED, AND WHETHER THEY ANSWER (greenhouse decisions/0282).
+    //
+    // 🚨 IT IS HERE BECAUSE A FRESH APP COULD NOT SEE ITS OWN DECLARATION. `StackProviderInterface` has
+    // shipped since decisions/0201 and the only reader lived inside `milpa/admin`, which is OPT-IN —
+    // measured on cattle, a Mercure hub was running on the exact port a declared service names while
+    // the app said the live hub was not connected and swallowed the sentence that says where to go.
+    //
+    // It READS. decisions/0201 («the runtime starts nothing») and decisions/0252 («starting containers
+    // because somebody opened a page is authority a panel does not have») are decisions about the VERB,
+    // and this operation has none. An app that declares no services gets an empty list, not an error.
+    Milpa\AppRuntime\Operations\StackOperations::class,
 ];
