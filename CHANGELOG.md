@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.46.1](https://github.com/getmilpa/framework/compare/v0.46.0...v0.46.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **security:** consent counts as identity to the boot guard ([#113](https://github.com/getmilpa/framework/issues/113)) ([dc15323](https://github.com/getmilpa/framework/commit/dc153231d7f7c3e2b70fb53bebfd752ba9e639d8))
+
 ## [0.46.0](https://github.com/getmilpa/framework/compare/v0.45.3...v0.46.0) (2026-09-10)
 
 
