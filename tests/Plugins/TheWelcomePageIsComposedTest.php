@@ -41,6 +41,21 @@ final class TheWelcomePageIsComposedTest extends TestCase
             ->getBody();
     }
 
+    /**
+     * The page with every CSS comment removed — what a selector claim has to be measured against.
+     *
+     * 🚨 CSS COMMENTS SHIP TO THE BROWSER, AND THIS PAGE'S COMMENTS QUOTE THE SELECTORS THEY FORBID.
+     * Two assertions in this suite failed on their own prose before this existed: the note explaining
+     * why `pre code { background: none }` was retired CONTAINS that selector. It happened twice in one
+     * session — once here and once in `milpa/live-web`, whose scoper copies comments verbatim — which
+     * makes it a habit and not an accident: a claim about what a stylesheet DOES cannot be answered by
+     * text that merely talks about it.
+     */
+    private static function selectorsOnly(): string
+    {
+        return (string) preg_replace('~/\*.*?\*/~s', '', self::page());
+    }
+
     /** The mark Rod could not find anywhere on the page, as the component that owns it. */
     public function testTheHousesMarkIsOnThePageAsAComponent(): void
     {
@@ -102,8 +117,29 @@ final class TheWelcomePageIsComposedTest extends TestCase
     {
         $html = self::page();
 
-        self::assertStringNotContainsString('pre code {', $html);
+        self::assertStringNotContainsString('pre code {', self::selectorsOnly());
         self::assertStringNotContainsString('<pre><code>php bin/coa', $html, 'no hand-written block survived');
+    }
+
+    /**
+     * 🚨 THE PAGE'S OWN `code` RULE DOES NOT REACH INSIDE A COMPONENT.
+     *
+     * A bare `code { background: … }` claims every `code` on the page, the component's included —
+     * measured in a browser as a chip with its own padding and a 6px radius behind the command, drawn
+     * by this page and not by the block. It is the same bug the retired `pre code { background: none }`
+     * line used to patch, and scoping cannot prevent it: scoping keeps two COMPONENTS apart, not a
+     * host document's element selectors. The page narrows its claim to the prose it owns.
+     */
+    public function testThePagesInlineCodeRuleOnlyClaimsItsOwnProse(): void
+    {
+        $html = self::page();
+
+        self::assertStringContainsString('p code {', $html);
+        self::assertDoesNotMatchRegularExpression(
+            '/^\s*code\s*\{/m',
+            self::selectorsOnly(),
+            'a bare element selector would repaint the command inside every code-block on the page',
+        );
     }
 
     /** The system is served and linked, dark-first, with the mark as the tab icon. */

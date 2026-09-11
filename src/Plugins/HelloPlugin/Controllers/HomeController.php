@@ -231,7 +231,15 @@ final class HomeController
                         @media (max-width: 30rem) {
                             .hero { grid-template-columns: 1fr; }
                         }
-                        code {
+                        /* 🚨 `p code` AND NOT `code`. A bare element selector claims every `code` on the
+                           page, including the ones inside a component — measured: this rule painted the
+                           command inside `code-block` on a chip with its own padding and radius, which is
+                           the exact bug the retired `pre code { background: none }` line used to patch. A
+                           component cannot defend itself from its host by scoping, because scoping keeps
+                           two COMPONENTS apart. The page narrows its claim to the prose it owns; the
+                           component declares its own paint. Both, because either alone is one stranger
+                           away from the same chip. */
+                        p code {
                             /* `--surface` and not `--surface-raised`: an inline tint is not a raised block,
                                and painting both the same makes every class name in a paragraph read as a
                                stripe. The distinction is the system's, not a value picked by eye. */
