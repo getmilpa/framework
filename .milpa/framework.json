@@ -1,4 +1,4 @@
 {
   "$comment": "Which milpa/framework this tree IS. Bumped by release-please on every release; extended with this house's birth record by the post-create-project script. See tools/stamp-framework.php.",
-  "version": "0.49.1"
+  "version": "0.50.0"
 }

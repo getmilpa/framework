@@ -1,6 +1,18 @@
 # Changelog
 
 
+## [0.50.0](https://github.com/getmilpa/framework/compare/v0.49.1...v0.50.0) (2026-09-11)
+
+
+### Features
+
+* **welcome:** the page hands over the door and stops inventing the steps ([#131](https://github.com/getmilpa/framework/issues/131)) ([d5b9106](https://github.com/getmilpa/framework/commit/d5b9106b199b11e4787a71d0890e3b19e287568d))
+
+
+### Bug Fixes
+
+* **welcome:** the headline is sized against the mark, and four chips were invisible ([#129](https://github.com/getmilpa/framework/issues/129)) ([ffc6640](https://github.com/getmilpa/framework/commit/ffc6640bc6a8aaf0d5afdd2f34992a17609960d1))
+
 ## [0.49.1](https://github.com/getmilpa/framework/compare/v0.49.0...v0.49.1) (2026-09-11)
 
 
