@@ -42,7 +42,11 @@ final class KernelBootTest extends TestCase
         $body = (string) $response->getBody();
 
         $this->assertStringContainsString('Milpa is running', $body);
-        $this->assertStringContainsString('Your first five minutes', $body);
+        // «Start here», not «Your first five minutes»: the page hands over one door and lets the house
+        // report its own next steps, rather than keeping a hardcoded list that goes stale the moment a
+        // capability is switched on (greenhouse decisions/0301).
+        $this->assertStringContainsString('Start here', $body);
+        $this->assertStringContainsString('php bin/coa house:start', $body);
     }
 
     /**

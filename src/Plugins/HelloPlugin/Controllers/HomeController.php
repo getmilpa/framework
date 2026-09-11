@@ -52,56 +52,45 @@ use Psr\Http\Message\ServerRequestInterface;
 final class HomeController
 {
     /**
-     * The first five minutes, in order: what to say, and the command that says it.
+     * THE DOOR — one command, because the house knows its own state and this page does not.
      *
-     * An ordered list because the steps ARE a sequence — each one is taken after the one above it,
-     * and `house:start` reports different next steps once you have. Numbering content that is not a
-     * sequence is decoration; numbering this is information.
+     * 🚨 THIS USED TO BE EIGHT NUMBERED STEPS, and the defect was not their number. It was that a page
+     * cannot know what an app's next step is. It mixed three different stories into one run — meeting
+     * the house (`house:start`, `list`, `capabilities`), equipping it (`capabilities:enable`,
+     * `recipe:apply`) and operating it (`shell`, `serve`) — and it hardcoded an order that goes stale
+     * the moment somebody switches a capability on.
      *
-     * @var list<array{prose: string, command: string}>
+     * `house:start` already answers all of it, from the app's real authorities: its `next` is declared
+     * as «the next real steps, in order: each {step, command, why} — every command is one this app
+     * offers today», and its observable evidence is that «following the first one literally changes
+     * what `house:start` answers next». So this page hands over the door and stops there. The state
+     * knows, the house decides, the surface projects — and a surface that RETYPED the steps would be
+     * inventing a criterion it does not own.
+     *
+     * Not the state panel itself, and that is measured rather than chosen: `house:start` is a read
+     * (`EffectProfile::readOnly()`) but it declares `surfaces: ['cli', 'tui', 'mcp']` and NOT http,
+     * because «the answer carries the app's filesystem root, and a route the ops surface publishes
+     * under `expose: ['*']` answers without a principal». This page is the one surface a fresh app
+     * serves with no identity at all, so projecting that answer here is a decision about what is safe
+     * without a principal — not a wiring job (greenhouse decisions/0301).
      */
-    private const array STEPS = [
-        [
-            'prose' => 'Ask the app where it stands and what to do next — every step it names is a command it '
-                . 'offers today, and the steps change as you take them:',
-            'command' => 'php bin/coa house:start',
-        ],
-        [
-            'prose' => 'Do not guess what booted. Ask the app:',
-            'command' => "php bin/coa list\nphp bin/coa plugins:list",
-        ],
-        [
-            'prose' => 'What this app can do today — and what it could do next, each one already carrying the '
-                . 'command that grows it:',
-            'command' => 'php bin/coa capabilities',
-        ],
-        [
-            'prose' => 'Take a package name it lists under <code>available</code> and grow into it. Ask first '
-                . 'what it would run:',
-            'command' => 'php bin/coa capabilities:enable milpa/devtools --dry-run',
-        ],
-        [
-            'prose' => 'Or let a recipe do the first hour for you — found the house on a domain, switch on what '
-                . 'it needs and scaffold the first plugin, each step through the same gate. A recipe runs '
-                . 'through the governed runtime — the sessions that record its pauses — so switch that on '
-                . 'first (<code>house:start</code> says so while it is missing). No model gateway is needed '
-                . 'for a door you open yourself:',
-            'command' => 'php bin/coa capabilities:enable milpa/agent',
-        ],
-        [
-            'prose' => 'Then apply it (edit <code>recipes/notes.json</code> first, or copy it under another '
-                . 'name). It pauses for your consent before each step that changes something — answer with '
-                . '<code>agent:answer</code> and call it again:',
-            'command' => 'php bin/coa recipe:apply --recipe=notes',
-        ],
-        [
-            'prose' => 'Then every operation on one screen, including whatever a capability just added:',
-            'command' => 'php bin/coa shell',
-        ],
-        [
-            'prose' => 'And see it in a browser — the URL it prints answers while it runs:',
-            'command' => 'php bin/coa serve',
-        ],
+    private const string DOOR = 'php bin/coa house:start';
+
+    /**
+     * The three ways out, for a reader who would rather look around than be told.
+     *
+     * One line each, because they are not steps: they are alternatives, and numbering alternatives is
+     * the defect the eight-step list had. The `--dry-run` is here on purpose and not for symmetry —
+     * it teaches, in the first minute, that this house lets you ask what a change would do before
+     * making it, which is the doctrine the rest of the framework is built on.
+     *
+     * @var list<array{does: string, command: string}>
+     */
+    private const array WAYS_OUT = [
+        ['does' => 'See what it can do, and what it could do next', 'command' => 'php bin/coa capabilities'],
+        ['does' => 'Ask what switching one on would change, before it changes', 'command' => 'php bin/coa capabilities:enable milpa/agent --dry-run'],
+        ['does' => 'Let a recipe do the first hour, pausing for your consent', 'command' => 'php bin/coa recipe:apply --recipe=notes'],
+        ['does' => 'Work inside the house, every operation on one screen', 'command' => 'php bin/coa shell'],
     ];
 
     public function __construct(private readonly string $greeting)
@@ -151,19 +140,25 @@ final class HomeController
         ]);
     }
 
-    /**
-     * The steps, each its prose and its command as a composed block.
-     */
-    private static function steps(): string
+    /** The door: one block, composed, with the copy affordance its component owns. */
+    private static function door(): string
     {
-        $renderer = new CodeBlockHtmlRenderer();
-        $component = new CodeBlockComponent();
+        return self::compose(new CodeBlockComponent(), new CodeBlockHtmlRenderer(), ['command' => self::DOOR], 'door');
+    }
+
+    /**
+     * The ways out — a command each, as a chip rather than a block.
+     *
+     * A `code-block` per row would give four more framed terminals equal weight to the door, and the
+     * whole point of the door is that it is not one of four. These are a chip and a sentence.
+     */
+    private static function waysOut(): string
+    {
         $html = '';
 
-        foreach (self::STEPS as $i => $step) {
-            $html .= '<li><p>' . $step['prose'] . '</p>'
-                . self::compose($component, $renderer, ['command' => $step['command']], 'step-' . ($i + 1))
-                . '</li>';
+        foreach (self::WAYS_OUT as $way) {
+            $html .= '<li><span class="does">' . $way['does'] . '</span>'
+                . '<code>' . htmlspecialchars($way['command'], \ENT_QUOTES, 'UTF-8') . '</code></li>';
         }
 
         return $html;
@@ -174,14 +169,15 @@ final class HomeController
         $assets = self::assets();
 
         return \str_replace(
-            ['__GREETING__', '__MARK__', '__STEPS__', '__STYLES__', '__SCRIPTS__'],
+            ['__GREETING__', '__MARK__', '__DOOR__', '__WAYS_OUT__', '__STYLES__', '__SCRIPTS__'],
             [
                 htmlspecialchars($this->greeting, \ENT_QUOTES, 'UTF-8'),
                 // READY, not `sown`: the mark reports what the surface is doing, and this page has
                 // finished doing it. A mark left growing on a page that is already painted is the
                 // loader that never goes away.
                 self::compose(new BrandMarkComponent(), new BrandMarkHtmlRenderer(), ['state' => 'ready'], 'mark'),
-                self::steps(),
+                self::door(),
+                self::waysOut(),
                 $assets->styleTag(),
                 $assets->scriptTag(),
             ],
@@ -273,7 +269,7 @@ final class HomeController
                            two COMPONENTS apart. The page narrows its claim to the prose it owns; the
                            component declares its own paint. Both, because either alone is one stranger
                            away from the same chip. */
-                        p code {
+                        p code, .ways-out code {
                             /* 🚨 `--surface-raised`, BECAUSE `--surface` IS WHAT THE PANEL IS PAINTED.
                                Measured: of the ten chips on this page, the four inside the panel sat at
                                1.000:1 against their own ground — the identical colour, so no chip at all
@@ -317,27 +313,45 @@ final class HomeController
                             padding: var(--space-6);
                             background: var(--surface);
                         }
-                        /* The step number is drawn by the list, not written into the words: the order is
-                           the data, so the marker reads it rather than repeating it. */
-                        .steps { list-style: none; counter-reset: step; margin: 0; padding: 0; }
-                        .steps > li {
-                            counter-increment: step;
-                            display: grid;
-                            grid-template-columns: 2rem 1fr;
-                            gap: 0 var(--space-4);
-                            padding-block: var(--space-6);
-                            border-top: 1px solid var(--border-subtle);
+                        /* 🚨 NO NUMBERED LIST HERE ANY MORE, and its removal is the point of this slice.
+                           Eight numbered steps asserted an order this page does not own: the house
+                           reports its own next steps and they change as you take them, so a hardcoded
+                           sequence is a second, stale answer to a question something else already
+                           answers (greenhouse decisions/0301). */
+
+                        /* The plumbing, disclosed. `--text-muted` on the summary because it is an offer,
+                           not an instruction, and the caret is the browser's own — a marker this page
+                           drew itself would be a second one to keep in sync with the open state. */
+                        .plumbing { margin: var(--space-6) 0; }
+                        .plumbing > summary {
+                            color: var(--text-muted);
+                            cursor: pointer;
+                            padding-block: var(--space-1);
                         }
-                        .steps > li:first-child { border-top: 0; padding-top: 0; }
-                        .steps > li::before {
-                            content: counter(step);
-                            grid-row: span 2;
-                            font-family: var(--font-mono);
-                            font-variant-numeric: tabular-nums;
-                            color: var(--accent);
-                            text-align: right;
+                        .plumbing > summary:focus-visible {
+                            outline: 2px solid var(--accent);
+                            outline-offset: 2px;
+                            border-radius: var(--radius-sm);
                         }
-                        .steps > li > p { margin: 0 0 var(--space-3); }
+                        .plumbing[open] > summary { margin-bottom: var(--space-3); }
+
+                        /* 🚨 `h2 + p` AND NOT `.next > p`. The rule exists to close the gap under the
+                           heading, but as a child selector it beat `.or` on specificity — (0,1,1)
+                           against (0,1,0) — and zeroed the margin of a paragraph that is not its
+                           business. Measured: `.or` computed `margin-top: 0px` and sat flush against
+                           the block above it. A type-based selector fighting a named one over spacing
+                           is the cascade collision this page is supposed to be an example against. */
+                        .next > h2 + p { margin-top: 0; }
+                        /* The door is the one thing with a block; everything after it is quieter. */
+                        .or { color: var(--text-muted); margin: var(--space-6) 0 var(--space-3); }
+
+                        /* THE WAYS OUT ARE NOT STEPS, so they carry no number and no rule between them:
+                           they are alternatives, and numbering alternatives is exactly what the eight-step
+                           list did wrong. A sentence and the command that does it. */
+                        .ways-out { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+                        .ways-out > li { display: grid; gap: var(--space-1); }
+                        .ways-out .does { color: var(--text-muted); }
+                        .ways-out code { justify-self: start; }
                     </style>
                 </head>
                 <body>
@@ -345,18 +359,34 @@ final class HomeController
                         __MARK__
                         <div>
                             <h1>__GREETING__</h1>
-                            <p>The Milpa framework is answering this request.</p>
+                            <p>This app is answering through the framework.</p>
                         </div>
                     </header>
-                    <p>This response left <code>App\Plugins\HelloPlugin\Controllers\HomeController</code>,
-                       dispatched by <code>Milpa\Runtime\Http\RequestHandler</code> over a kernel booted
-                       with zero database.</p>
-                    <p>The heading above came from <code>config/app.php</code>
-                       (<code>app.greeting</code>), read by <code>HelloPlugin::boot()</code> through
-                       <code>Milpa\Runtime\Config</code> — edit it and reload.</p>
-                    <section class="next" aria-labelledby="next-steps">
-                        <h2 id="next-steps">Your first five minutes</h2>
-                        <ol class="steps">__STEPS__</ol>
+
+                    <!-- THE PLUMBING IS DISCLOSED, NOT ANNOUNCED. It used to be the second thing a
+                         newcomer read, in two paragraphs of class names, competing with the first
+                         experience for the same attention. It is genuinely useful — to a developer
+                         inspecting how the request was handled — and `<details>` is exactly the
+                         element for something useful that nobody asked for yet: native, keyboard
+                         reachable, no script. Architecture can be deep without making the first
+                         screen explain all of it. -->
+                    <details class="plumbing">
+                        <summary>How this request was handled</summary>
+                        <p>This response left <code>App\Plugins\HelloPlugin\Controllers\HomeController</code>,
+                           dispatched by <code>Milpa\Runtime\Http\RequestHandler</code> over a kernel booted
+                           with zero database.</p>
+                        <p>The heading above came from <code>config/app.php</code>
+                           (<code>app.greeting</code>), read by <code>HelloPlugin::boot()</code> through
+                           <code>Milpa\Runtime\Config</code> — edit it and reload.</p>
+                    </details>
+
+                    <section class="next" aria-labelledby="start-here">
+                        <h2 id="start-here">Start here</h2>
+                        <p>Ask the house where it stands and what comes next. Every step it names is a
+                           command this app offers today, and following one changes what it answers.</p>
+                        __DOOR__
+                        <p class="or">Or look around first:</p>
+                        <ul class="ways-out">__WAYS_OUT__</ul>
                     </section>
                     __SCRIPTS__
                 </body>
