@@ -22,6 +22,8 @@ use Milpa\Http\Routing\HandlerReference;
 use Milpa\Http\Routing\Route;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
+use Milpa\Runtime\Kernel;
+use Milpa\AppRuntime\Framework\FrameworkStamp;
 use Milpa\Runtime\Config;
 use Milpa\Runtime\Http\RouteProviderInterface;
 
@@ -61,10 +63,30 @@ final class HelloPlugin implements PluginInterface, RouteProviderInterface
         $greeting = $this->container->get(Config::class)->get('app.greeting', 'Milpa is running (default greeting).');
         \assert(\is_string($greeting));
 
-        // Wire the value into the collaborator that renders it. The controller is resolved from
+        // WHICH FRAMEWORK THIS HOUSE RUNS, read the same way: here, and handed over.
+        //
+        // `.milpa/framework.json` is the birth record — bumped by release-please on every release and
+        // extended by `tools/stamp-framework.php` on `create-project`. It is the only thing that can
+        // answer this: `milpa/framework` is the ROOT package of a created app, so it is not in
+        // `composer.lock`'s package list at all, and a version typed into the page would be a second
+        // answer to a question one file already answers (greenhouse decisions/0303).
+        //
+        // Null when the record is absent — a tree that was copied rather than created. The page says
+        // nothing rather than guessing, the way `house:start` says what it could not do.
+        $version = FrameworkStamp::version($this->root());
+
+        // Wire the values into the collaborator that renders them. The controller is resolved from
         // the container at request time, so registering the built instance here is what makes the
         // config value reach the page — the plugin owns that wiring, the controller stays dumb.
-        $this->container->registerService(HomeController::class, new HomeController($greeting));
+        $this->container->registerService(HomeController::class, new HomeController($greeting, $version));
+    }
+
+    /** Where this app lives, asked of the Kernel rather than derived from `__DIR__`. */
+    private function root(): string
+    {
+        $kernel = $this->container->has(Kernel::class) ? $this->container->get(Kernel::class) : null;
+
+        return $kernel instanceof Kernel ? $kernel->root() : \dirname(__DIR__, 3);
     }
 
     public function install(): void

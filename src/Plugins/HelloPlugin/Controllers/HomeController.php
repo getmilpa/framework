@@ -100,8 +100,27 @@ final class HomeController
         ['does' => 'Enter the house', 'command' => 'php bin/coa shell'],
     ];
 
-    public function __construct(private readonly string $greeting)
-    {
+    /**
+     * Where the house can be read and where it is published — the only two links on this page.
+     *
+     * Absolute and literal because they are not this app's: they are the framework's own, and an app
+     * that moves does not move them. The landing is `.lat` on purpose — it is Spanish-first, which the
+     * TLD earns (greenhouse decisions/0138).
+     *
+     * @var array<string, string>
+     */
+    private const array ELSEWHERE = [
+        'Source' => 'https://github.com/getmilpa/framework',
+        'milpa.lat' => 'https://milpa.lat',
+    ];
+
+    /**
+     * @param string|null $version which `milpa/framework` this house runs, or null when nothing can say
+     */
+    public function __construct(
+        private readonly string $greeting,
+        private readonly ?string $version = null,
+    ) {
     }
 
     /**
@@ -161,11 +180,42 @@ final class HomeController
      */
     private static function waysOut(): string
     {
+        $renderer = new CodeBlockHtmlRenderer();
+        $component = new CodeBlockComponent();
         $html = '';
 
-        foreach (self::WAYS_OUT as $way) {
+        foreach (self::WAYS_OUT as $i => $way) {
+            // COMPOSED, NOT A CHIP. Written as a plain `<code>` these four could be read and not
+            // taken — «solo se puede copiar 1 comando, los otros se muestran pero no hay UX» — and the
+            // copy affordance belongs to the component, not to a button this page would sew on. The
+            // compact variant is one row, so the door keeps its weight.
             $html .= '<li><span class="does">' . $way['does'] . '</span>'
-                . '<code>' . htmlspecialchars($way['command'], \ENT_QUOTES, 'UTF-8') . '</code></li>';
+                . self::compose($component, $renderer, [
+                    'command' => $way['command'],
+                    // No prompt: the door carries the `$` because it is the thing being run. A listed
+                    // alternative is being named, and a prompt on every row is the eight «TERMINAL»
+                    // labels again.
+                    'prompt' => '',
+                    'compact' => true,
+                ], 'way-' . ($i + 1))
+                . '</li>';
+        }
+
+        return $html;
+    }
+
+    /** The house's own version and where to read it — nothing, when the record cannot say. */
+    private function elsewhere(): string
+    {
+        $html = '';
+
+        if ($this->version !== null) {
+            $html .= '<span class="version">milpa/framework '
+                . htmlspecialchars($this->version, \ENT_QUOTES, 'UTF-8') . '</span>';
+        }
+
+        foreach (self::ELSEWHERE as $name => $href) {
+            $html .= '<a href="' . $href . '" rel="noopener noreferrer">' . $name . '</a>';
         }
 
         return $html;
@@ -176,7 +226,7 @@ final class HomeController
         $assets = self::assets();
 
         return \str_replace(
-            ['__GREETING__', '__MARK__', '__DOOR__', '__WAYS_OUT__', '__STYLES__', '__SCRIPTS__'],
+            ['__GREETING__', '__MARK__', '__DOOR__', '__WAYS_OUT__', '__ELSEWHERE__', '__STYLES__', '__SCRIPTS__'],
             [
                 htmlspecialchars($this->greeting, \ENT_QUOTES, 'UTF-8'),
                 // READY, not `sown`: the mark reports what the surface is doing, and this page has
@@ -185,6 +235,7 @@ final class HomeController
                 self::compose(new BrandMarkComponent(), new BrandMarkHtmlRenderer(), ['state' => 'ready'], 'mark'),
                 self::door(),
                 self::waysOut(),
+                $this->elsewhere(),
                 $assets->styleTag(),
                 $assets->scriptTag(),
             ],
@@ -276,7 +327,7 @@ final class HomeController
                            two COMPONENTS apart. The page narrows its claim to the prose it owns; the
                            component declares its own paint. Both, because either alone is one stranger
                            away from the same chip. */
-                        p code, .ways-out code {
+                        p code {
                             /* 🚨 `--surface-raised`, BECAUSE `--surface` IS WHAT THE PANEL IS PAINTED.
                                Measured: of the ten chips on this page, the four inside the panel sat at
                                1.000:1 against their own ground — the identical colour, so no chip at all
@@ -350,12 +401,16 @@ final class HomeController
                            is the cascade collision this page is supposed to be an example against. */
                         .next > h2 + p { margin-top: 0; }
                         /* The door is the one thing with a block; everything after it is quieter. */
+                        /* A TITLE, not a muted aside. It labels a group of four and sits one rung under
+                           «Start here», so it looks like a heading: the heading face, bold, and a step
+                           up from body text. Read as `--text-base` at weight 400 it was indistinguishable
+                           from the labels it governs. */
                         .or {
-                            color: var(--text-muted);
-                            font-family: var(--font-body);
-                            font-size: var(--text-base);
-                            font-weight: 400;
-                            margin: var(--space-6) 0 var(--space-3);
+                            color: var(--text);
+                            font-family: var(--font-heading);
+                            font-size: var(--text-lg);
+                            font-weight: 700;
+                            margin: var(--space-8) 0 var(--space-4);
                         }
 
                         /* THE WAYS OUT ARE NOT STEPS, so they carry no number and no rule between them:
@@ -365,50 +420,74 @@ final class HomeController
                         /* ONE LINE EACH: the concept, then the command. `wrap` because the longest of
                            them is the `--dry-run`, and a row that cannot wrap is the page scrolling
                            sideways again. */
-                        .ways-out > li {
-                            display: flex;
-                            flex-wrap: wrap;
+                        /* 🚨 ONE GRID FOR THE WHOLE LIST, so every command starts at the same x.
+                           Each row used to be its own flex line, which meant four labels of four
+                           different lengths pushed their commands to four different offsets — read as
+                           «los mandos no estan alineados, se ve sucio». A per-row layout cannot align
+                           across rows; only a shared track can, and `subgrid` is what shares it. */
+                        .ways-out {
+                            grid-template-columns: max-content 1fr;
+                            column-gap: var(--space-3);
                             align-items: baseline;
-                            gap: var(--space-2);
+                        }
+                        .ways-out > li {
+                            display: grid;
+                            grid-template-columns: subgrid;
+                            grid-column: 1 / -1;
+                            align-items: baseline;
                             /* 🚨 THE ROW IS THE ONE THAT HAS TO AGREE TO SHRINK. It is a GRID item, and a
                                grid item's `min-width` is `auto` — min-content — which includes the
-                               unwrappable chip inside it. Measured: the row stood 532px wide inside a
+                               unwrappable command inside it. Measured: the row stood 532px wide inside a
                                402px list and pushed the document to 581px in a 500px viewport, while
-                               the chip's own `min-width: 0` changed nothing because it was inheriting
+                               the command's own `min-width: 0` changed nothing because it was inheriting
                                the row's refusal. Two guesses cost me two measurements; walking the
                                ancestor chain and reading `minWidth` at each level answered it at once. */
                             min-width: 0;
                         }
+                        /* 🚨 THE BLOCK HUGS ITS COMMAND — it does not fill the track.
+                           A grid item stretches by default, so each compact block came out 544px wide
+                           with up to 341px of empty box after its command: a terminal that is not full.
+                           `justify-self` is the item's participation in THIS page's grid, not the
+                           component's interior, so it is the page's to set — and it is set through the
+                           component's public root attribute, never through its internals. Left edges
+                           stay aligned, which was the whole ask; the right edges go ragged, which is
+                           what content-sized boxes do. */
+                        .ways-out [data-milpa-component="code-block"] {
+                            justify-self: start;
+                            max-width: 100%;
+                        }
+
                         .ways-out .does { color: var(--text-muted); }
                         /* The dash is a separator, so it is drawn rather than written: a literal one in
                            the markup would be read out between every label and command. */
                         .ways-out .does::after { content: ' —'; }
 
-                        /* 🚨 A COMMAND DOES NOT WRAP — IT SCROLLS. Same rule `code-block` applies to its
-                           own body, and for the same reason: a wrapped shell line reads as two
-                           commands.
-
-                           It took two measurements to get here. `anywhere` split
-                           `recipe:apply --recipe=notes` as «--» / «recipe=notes» — a break that invents
-                           an argument. `break-word` fixed two of the three chips and left that one,
-                           because a HYPHEN is a natural break opportunity in CSS line breaking, not an
-                           overflow break: no `overflow-wrap` value can refuse it. So the chip stops
-                           wrapping at all and carries its own scroller, which is what the block beside
-                           it already does. The prose chips keep `anywhere`: a namespaced class name has
-                           no break opportunity, and letting IT set the page's width was the original
-                           defect. */
-                        .ways-out code {
-                            white-space: pre;
-                            overflow-x: auto;
-                            /* 🚨 `min-width: 0` IS THE LOAD-BEARING LINE. A flex item's `min-width` is
-                               `auto`, which resolves to min-content — and min-content for
-                               `white-space: pre` is the WHOLE command, so the chip refused to shrink
-                               and pushed the document to 581px in a 500px viewport. Measured
-                               immediately after adding the scroller: I had traded a misleading break
-                               for the sideways scroll this page already fixed once. */
-                            min-width: 0;
-                            max-width: 100%;
+                        /* Where the house can be read. Quiet, at the end, and the only links on the
+                           page — so they are the only thing here that carries the accent. */
+                        .elsewhere {
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: var(--space-4);
+                            margin-top: var(--space-8);
+                            color: var(--text-muted);
+                            font-size: var(--text-sm);
                         }
+                        .elsewhere a { color: var(--accent); text-decoration: none; }
+                        .elsewhere a:hover, .elsewhere a:focus-visible { text-decoration: underline; }
+                        .elsewhere a:focus-visible {
+                            outline: 2px solid var(--accent);
+                            outline-offset: 2px;
+                            border-radius: var(--radius-sm);
+                        }
+                        .version { font-family: var(--font-mono); }
+
+                        /* NOTHING HERE ABOUT HOW A COMMAND WRAPS ANY MORE, and that is the point of
+                           composing them: `code-block` already refuses to wrap and scrolls instead,
+                           because a wrapped shell line reads as two commands. This page spent three
+                           measurements re-deriving that rule for its own chips — `anywhere` split
+                           `--recipe=notes` into «--» / «recipe=notes», `break-word` could not refuse a
+                           hyphen's natural break, and the scroller then widened the document — before
+                           the commands became components that already knew it (decisions/0302, 0303). */
                     </style>
                 </head>
                 <body>
@@ -453,6 +532,7 @@ final class HomeController
                         <h3 class="or" id="or-explore">Or explore</h3>
                         <ul class="ways-out" aria-labelledby="or-explore">__WAYS_OUT__</ul>
                     </section>
+                    <footer class="elsewhere">__ELSEWHERE__</footer>
                     __SCRIPTS__
                 </body>
                 </html>
