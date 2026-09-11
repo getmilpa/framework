@@ -21,6 +21,7 @@ use Milpa\Live\Components\CodeBlockComponent;
 use Milpa\Live\Contracts\Component\ComponentDefinitionInterface;
 use Milpa\Live\Contracts\Rendering\ComponentRendererInterface;
 use App\Plugins\HelloPlugin\HelloPlugin;
+use App\Plugins\HelloPlugin\HouseState;
 use Milpa\Live\Rendering\BrandMarkHtmlRenderer;
 use Milpa\Live\Rendering\CodeBlockHtmlRenderer;
 use Milpa\Live\Support\DesignTokens;
@@ -118,13 +119,22 @@ final class HomeController
         'milpa.lat' => 'https://milpa.lat',
     ];
 
+    /** @var \Closure(): HouseState how this page asks the house where it stands, at request time */
+    private readonly \Closure $state;
+
     /**
      * @param string|null $version which `milpa/framework` this house runs, or null when nothing can say
      */
     public function __construct(
         private readonly string $greeting,
         private readonly ?string $version = null,
+        // WHY A CLOSURE AND NOT THE STATE ITSELF: the Kernel enters the container AFTER the boot
+        // (greenhouse evidence/0294), and this controller is built during it. Resolved at request
+        // time, the answer is the running house's; resolved at boot, there is no house to ask yet.
+        // Absent → the page renders no strip, which is what a surface with no authority should do.
+        ?\Closure $state = null,
     ) {
+        $this->state = $state ?? static fn (): HouseState => HouseState::unasked();
     }
 
     /**
@@ -208,6 +218,67 @@ final class HomeController
         return $html;
     }
 
+    /**
+     * Where the house stands, in a line — or nothing at all when nobody can say.
+     *
+     * Three shapes, and the third is the one this exists for:
+     *
+     * - NOT ASKED (no resolver wired): renders nothing. A house that was never asked must not be
+     *   reported as a house with nothing.
+     * - COULD NOT SAY: the authority's own sentence, marked as a problem. `Capabilities::state()` has
+     *   no manifest guard — only `houseStart()` does — so a page deriving the registry itself would
+     *   print «0 capabilities» as a FACT after an interrupted `composer install`. That is the defect
+     *   `decisions/0307` paid to remove from the CLI, and it would have arrived here for free.
+     * - KNOWN: whether it is founded, and two counts. Never the names, never the paths, never the root
+     *   — {@see HouseState} carries the reasoning for each.
+     */
+    private function stateStrip(): string
+    {
+        $state = ($this->state)();
+        if (!$state->known && $state->cannotSay === null) {
+            return '';
+        }
+        if (!$state->known) {
+            // Prose, for the same reason: it is on the page when it loads, not announced into it.
+            return '<p class="state-unknown">'
+                . htmlspecialchars($state->cannotSay ?? '', \ENT_QUOTES, 'UTF-8') . '</p>';
+        }
+
+        // A COUNT AND ITS NOUN, pluralised — «1 capabilities» is the tell of a page that renders data
+        // rather than writing a sentence, and this is the first sentence anybody reads.
+        $plural = static fn (int $n, string $one, string $many): string => $n . ' ' . ($n === 1 ? $one : $many);
+
+        // 🚨 A LIST, BECAUSE THREE FACTS ARE A LIST — and because spans ran together when read aloud.
+        // The first version was one `<p>` of three spans with the separator DRAWN rather than typed, on
+        // the reasoning that a `·` between them would be announced as a word. That half was right and
+        // it created the other half: `textContent` came out «Founded3 capabilities3 routes», so a
+        // screen reader got no separation at all. `<li>` gives the reading separation for free and
+        // announces «list, 3 items», which is what this is (greenhouse decisions/0312).
+        // 🚨 NO `role="status"`, AND THE A11Y TREE IS WHY. It was there first, copied from the copy
+        // button — where it is right, because «copied» IS a status. Here it made the list a LIVE
+        // REGION: the tree reported `status atomic live="polite"` and the list semantics were gone, so
+        // a screen reader announced a polite interruption instead of «list, 3 items». This strip never
+        // changes after load; it is content, not a notification. A role that describes the element's
+        // MECHANISM rather than its CONTENT is how a page ends up announcing itself.
+        //
+        // `role="list"` IS KEPT, AND ITS USUAL JUSTIFICATION DID NOT REPRODUCE HERE — said this way
+        // round because the first version of this comment claimed it had. `list-style: none` is known
+        // to drop the list role in WebKit, which is why declaring it back is the standard remedy; this
+        // machine has no WebKit, so that half is INFERRED and not measured. What WAS measured, both
+        // ways in the accessibility tree: Chromium keeps `list` → three `listitem` with the role and
+        // without it, byte for byte. The role stays because it costs nothing and answers the engine
+        // that cannot be checked from here; the claim is trimmed to what a measurement supports.
+        //
+        // 🚨 And the thing that fooled me twice is the INSTRUMENT: a non-verbose a11y snapshot PRUNES
+        // list wrappers, so it showed three bare texts and I read that as lost semantics. The page's
+        // other `<ul>` was pruned identically, which is what gave it away.
+        return '<ul class="state" role="list">'
+            . '<li class="state__item">' . ($state->founded ? 'Founded' : 'Not founded yet') . '</li>'
+            . '<li class="state__item">' . $plural($state->capabilities, 'capability', 'capabilities') . '</li>'
+            . '<li class="state__item">' . $plural($state->routes, 'route', 'routes') . '</li>'
+            . '</ul>';
+    }
+
     /** The house's own version and where to read it — nothing, when the record cannot say. */
     private function elsewhere(): string
     {
@@ -248,13 +319,14 @@ final class HomeController
         $assets = self::assets();
 
         return \str_replace(
-            ['__GREETING__', '__MARK__', '__DOOR__', '__WAYS_OUT__', '__ELSEWHERE__', '__DESIGN__', '__STYLES__', '__SCRIPTS__'],
+            ['__GREETING__', '__MARK__', '__STATE__', '__DOOR__', '__WAYS_OUT__', '__ELSEWHERE__', '__DESIGN__', '__STYLES__', '__SCRIPTS__'],
             [
                 htmlspecialchars($this->greeting, \ENT_QUOTES, 'UTF-8'),
                 // READY, not `sown`: the mark reports what the surface is doing, and this page has
                 // finished doing it. A mark left growing on a page that is already painted is the
                 // loader that never goes away.
                 self::compose(new BrandMarkComponent(), new BrandMarkHtmlRenderer(), ['state' => 'ready'], 'mark'),
+                $this->stateStrip(),
                 self::door(),
                 self::waysOut(),
                 $this->elsewhere(),
@@ -527,6 +599,48 @@ final class HomeController
                             border-radius: var(--radius-sm);
                         }
                         .version { font-family: var(--font-mono); }
+                        /* WHERE IT STANDS. A row of facts, not a card: border and fill say «separate
+                           object», and this is a caption on the greeting above it, not a panel of its
+                           own. `flex-wrap` because three short facts on a phone are two lines, and a
+                           row that refuses to wrap is a row that widens the document. */
+                        .state {
+                            list-style: none;
+                            padding: 0;
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: var(--space-1) var(--space-4);
+                            margin-top: var(--space-3);
+                            color: var(--text-muted);
+                            font-size: var(--text-sm);
+                        }
+                        .state__item { white-space: nowrap; }
+                        /* Separators drawn, not typed: a `·` between spans would be read aloud by a
+                           screen reader as a word, and it would survive a copy-paste of the line. */
+                        .state__item + .state__item { position: relative; padding-left: var(--space-4); }
+                        .state__item + .state__item::before {
+                            content: '';
+                            position: absolute;
+                            /* CENTRED IN THE GAP, and the offset is why it is written as a calc: the
+                               item's padding box starts AFTER the flex gap, so `left: 0` put 16px
+                               before the rule and 8px after it — the rule read as a dash attached to
+                               the following word instead of a separator between two. Measured, then
+                               centred: 12px either side. */
+                            left: calc(var(--space-1) * -1);
+                            top: 50%;
+                            width: var(--space-2);
+                            height: 1px;
+                            background: var(--border-strong);
+                        }
+                        /* A HOUSE THAT CANNOT SAY is not a house with nothing, and it must not read
+                           like a caption. Same measure as the prose, so a full sentence fits. */
+                        .state-unknown {
+                            max-width: var(--container-narrow);
+                            margin-top: var(--space-3);
+                            font-size: var(--text-sm);
+                            color: var(--text);
+                            border-left: 2px solid var(--accent);
+                            padding-left: var(--space-3);
+                        }
 
                         /* NOTHING HERE ABOUT HOW A COMMAND WRAPS ANY MORE, and that is the point of
                            composing them: `code-block` already refuses to wrap and scrolls instead,
@@ -545,6 +659,12 @@ final class HomeController
                             <p>This app is answering through the framework.</p>
                         </div>
                     </header>
+                    <!-- WHERE THE HOUSE STANDS, DERIVED — the one thing a static page could never keep
+                         true. It sits between the greeting and the door on purpose: it is the CONTEXT
+                         that makes «ask the house where it stands» mean something, and it is state,
+                         never a step. What to do about it belongs to the operation
+                         (greenhouse decisions/0312). -->
+                    __STATE__
 
                     <!-- THE PLUMBING IS DISCLOSED, NOT ANNOUNCED. It used to be the second thing a
                          newcomer read, in two paragraphs of class names, competing with the first
