@@ -199,7 +199,15 @@ final class HomeController
                     <style>
                         /* LAYOUT AND WORDS ONLY — no colour of its own, and nothing that a component owns.
                            Milpa's design system ships the tokens inside `milpa/live-web` and this house
-                           serves them, so every value here is a variable the system defines. The rules for
+                           serves them, so every COLOUR, SPACE, SIZE and LEADING here is a token.
+
+                           🚨 That sentence used to read «every value here is a variable the system
+                           defines», which was not true and an audit said so: the measure (`48rem`, now
+                           `--container-narrow`) is a token, but the grid tracks and the chip's `em`
+                           padding are not, and cannot be — a track is structure, and `em` padding is
+                           deliberately relative to the chip's OWN text rather than to a global step. An
+                           overstated claim in a comment is worse than no claim: it is the sentence a
+                           reader trusts instead of checking. The rules for
                            `pre` and `pre code` that used to live here are gone: `code-block` owns them now,
                            and the page that owned them shipped two unreadable contrasts
                            (greenhouse decisions/0298, composed in 0299).
@@ -208,8 +216,15 @@ final class HomeController
                            answers only to an explicit `[data-theme="light"]` stamp. So this page is dark
                            wherever it is opened, exactly like the admin panel. */
                         body {
-                            font: var(--text-base)/1.6 var(--font-body);
-                            max-width: 48rem;
+                            /* 🚨 NOT THE `font` SHORTHAND. It carried `/1.6` — a literal the token set does
+                               not contain — and a `line-height` in the shorthand is inherited by EVERY
+                               heading on the page, so the h1 below was sitting in a 1.6 line box meant
+                               for running text. The system ships four leading tokens; this is the one
+                               for prose, and the headings now set their own. */
+                            font-family: var(--font-body);
+                            font-size: var(--text-base);
+                            line-height: var(--leading-relaxed);
+                            max-width: var(--container-narrow);
                             margin: 0 auto;
                             padding: var(--space-16) var(--space-6) var(--space-32);
                             /* THE GROUND IS PAINTED, ALWAYS. A body with no background borrows whatever the
@@ -226,7 +241,26 @@ final class HomeController
                         }
                         /* The mark sizes itself (`clamp` in its own stylesheet); the hero only says where
                            it goes. A page that re-sized it would be deciding for the brand. */
-                        .hero h1 { font-size: var(--text-xl); font-family: var(--font-heading); margin: 0; }
+                        /* 🚨 THE HEADLINE IS SIZED AGAINST THE MARK, NOT AGAINST THE PARAGRAPH.
+                           At `--text-xl` it was 20px in a 32px box beside a 144px mark — a measured
+                           4.5:1 — so the first screen was a big logo with a caption, and the eye landed
+                           on the brand and found nothing of equal weight to read. The gap did not close
+                           as the window grew: the mark clamps at 9rem above a 1108px viewport while a
+                           fixed heading stays put, so it locked at its worst on exactly the wide screen
+                           this page is opened on.
+
+                           A clamp rather than a fixed step, because the mark sizes itself the same way
+                           (`clamp(5rem, 13vw, 9rem)` in its own stylesheet) — so the hero's two halves
+                           now scale on one principle instead of one clamping while the other snaps. And
+                           `balance` because the text is `app.greeting` from config: arbitrary length. */
+                        .hero h1 {
+                            font-family: var(--font-heading);
+                            font-size: clamp(var(--text-2xl), 4vw, var(--text-4xl));
+                            line-height: var(--leading-tight);
+                            letter-spacing: var(--tracking-display);
+                            text-wrap: balance;
+                            margin: 0;
+                        }
                         .hero p { color: var(--text-muted); margin: var(--space-1) 0 0; }
                         @media (max-width: 30rem) {
                             .hero { grid-template-columns: 1fr; }
@@ -240,16 +274,43 @@ final class HomeController
                            component declares its own paint. Both, because either alone is one stranger
                            away from the same chip. */
                         p code {
-                            /* `--surface` and not `--surface-raised`: an inline tint is not a raised block,
-                               and painting both the same makes every class name in a paragraph read as a
-                               stripe. The distinction is the system's, not a value picked by eye. */
-                            background: var(--surface);
+                            /* 🚨 `--surface-raised`, BECAUSE `--surface` IS WHAT THE PANEL IS PAINTED.
+                               Measured: of the ten chips on this page, the four inside the panel sat at
+                               1.000:1 against their own ground — the identical colour, so no chip at all
+                               — while the six outside reached 1.416:1. The same markup rendered as a chip
+                               in one half of the page and as plain text in the other.
+
+                               An earlier note here argued for `--surface` on the grounds that «an inline
+                               tint is not a raised block». That reasoning was about the token's NAME; a
+                               chip needs a ground that differs from every surface it can land on, and on
+                               this page `--surface` is one of them. */
+                            background: var(--surface-raised);
                             color: var(--text);
                             padding: 0.15em 0.4em;
                             border-radius: var(--radius-sm);
                             font-family: var(--font-mono);
+                            /* 🚨 A CHIP MAY BREAK MID-WORD, BECAUSE A CLASS NAME HAS NO SPACES IN IT.
+                               Measured at a 500px viewport: the chip holding
+                               `App\Plugins\HelloPlugin\Controllers\HomeController` was 502px wide and
+                               pushed the document to 530px — the page itself scrolled sideways, which is
+                               the one thing a layout must never do. `normal` cannot break a namespaced
+                               name, so the longest identifier on the page sets the page's width.
+
+                               `anywhere` and not `break-word`: the string has no break opportunity at
+                               all, and the backslash is not one. The commands are NOT affected — they
+                               live in `code-block`, which scrolls them inside its own body on purpose:
+                               a wrapped shell line reads as two commands (measured: 472px of command
+                               scrolling inside a 305px block while the page stayed put). */
+                            overflow-wrap: anywhere;
                         }
-                        h2 { font-family: var(--font-heading); font-size: var(--text-lg); }
+                        /* Raised with the h1, because everything a reader scrolls through lives under
+                           this heading: lifting only the h1 would relocate the flatness rather than fix
+                           it, leaving an 18px heading to govern the whole body of the page. */
+                        h2 {
+                            font-family: var(--font-heading);
+                            font-size: var(--text-2xl);
+                            line-height: var(--leading-snug);
+                        }
                         .next {
                             border: 1px solid var(--border);
                             border-radius: var(--radius-lg);
