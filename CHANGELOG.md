@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.51.1](https://github.com/getmilpa/framework/compare/v0.51.0...v0.51.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **welcome:** the inline chip gets the block's treatment, sized to fit its line ([#136](https://github.com/getmilpa/framework/issues/136)) ([f0bbe6b](https://github.com/getmilpa/framework/commit/f0bbe6b0af3368dc22631b01cf3b204d0a7c7065))
+
 ## [0.51.0](https://github.com/getmilpa/framework/compare/v0.50.1...v0.51.0) (2026-09-11)
 
 
