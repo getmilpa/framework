@@ -29,7 +29,7 @@
         "milpa/tool-runtime": ">=0.13 <1.0",
         "nyholm/psr7": "^1.8",
         "nyholm/psr7-server": "^1.1",
-        "milpa/live-web": ">=0.24 <1.0"
+        "milpa/live-web": ">=0.25 <1.0"
     },
     "conflict": {
         "milpa/agent": "<0.5",
