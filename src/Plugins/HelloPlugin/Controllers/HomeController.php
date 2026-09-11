@@ -50,13 +50,58 @@ final class HomeController
                 <meta charset="utf-8">
                 <title>Milpa is running</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1">
+                <link rel="stylesheet" href="/design/milpa-tokens.css">
+                <link rel="stylesheet" href="/design/milpa-fonts.css">
+                <link rel="icon" type="image/svg+xml" href="/design/milpa-app-icon.svg">
                 <style>
-                    body { font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-                           max-width: 46rem; margin: 4rem auto; padding: 0 1.5rem; color: #1a1a1a; }
-                    code { background: #f2f2f2; padding: 0.15em 0.4em; border-radius: 4px; }
-                    pre { background: #111827; color: #f9fafb; padding: 1rem; border-radius: 10px; overflow-x: auto; }
-                    h1 { font-size: 1.5rem; }
-                    .next { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1rem; background: #fafafa; }
+                    /* NOT ONE COLOUR OF ITS OWN. Milpa's design system ships the tokens inside
+                       `milpa/live-web` and this house now serves them, so every value here is a
+                       variable the system defines — in both themes, which is what fixed the two
+                       measured bugs (greenhouse decisions/0298).
+
+                       Before: a `code` chip painted #f2f2f2 while inheriting the dark `pre`'s light
+                       text — 1.07:1, invisible. And `body` set a text colour with NO background, so a
+                       dark-scheme browser put near-black text on its own dark ground at 1.02:1. Both
+                       were hand-picked hexes in a light-only design that never said it was light. */
+                    body {
+                        font: var(--text-base)/1.5 var(--font-body);
+                        max-width: 46rem;
+                        margin: var(--space-16) auto;
+                        padding: 0 var(--space-6);
+                        /* THE GROUND IS PAINTED, ALWAYS. A body with no background borrows whatever the
+                           browser puts behind it, and then a fixed text colour is a coin flip. */
+                        background: var(--bg);
+                        color: var(--text);
+                    }
+                    code {
+                        /* `--surface` and not `--surface-raised`: an inline tint is not a raised block,
+                           and painting both the same makes every class name in a paragraph read as a
+                           stripe. The distinction is the system's, not a value picked by eye. */
+                        background: var(--surface);
+                        color: var(--text);
+                        padding: 0.15em 0.4em;
+                        border-radius: var(--radius-sm);
+                        font-family: var(--font-mono);
+                    }
+                    /* A `code` INSIDE a `pre` is already in its own block: no chip, no second ground to
+                       fight the one it sits on. This single rule is the whole invisible-command bug. */
+                    pre code { background: none; padding: 0; color: inherit; }
+                    pre {
+                        background: var(--surface-raised);
+                        color: var(--text);
+                        padding: var(--space-4);
+                        border-radius: var(--radius-md);
+                        border: 1px solid var(--border-subtle);
+                        overflow-x: auto;
+                        font-family: var(--font-mono);
+                    }
+                    h1 { font-size: var(--text-xl); font-family: var(--font-heading); }
+                    .next {
+                        border: 1px solid var(--border);
+                        border-radius: var(--radius-lg);
+                        padding: var(--space-4);
+                        background: var(--surface);
+                    }
                 </style>
             </head>
             <body>
