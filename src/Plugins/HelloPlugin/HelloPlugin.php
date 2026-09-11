@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Plugins\HelloPlugin;
 
+use App\Plugins\HelloPlugin\Controllers\DesignController;
 use App\Plugins\HelloPlugin\Controllers\HomeController;
 use Milpa\Attributes\PluginMetadata;
 use Milpa\Http\HttpMethod;
@@ -91,6 +92,22 @@ final class HelloPlugin implements PluginInterface, RouteProviderInterface
                 methods: HttpMethod::GET,
                 name: 'home',
                 handler: new HandlerReference(HomeController::class, 'index'),
+            ),
+            // MILPA'S DESIGN SYSTEM, SERVED FROM THIS HOUSE. The tokens and fonts ship inside
+            // `milpa/live-web` and nothing reached them, so the page below hand-rolled six hex values
+            // and two of them were unreadable. A page that can link the tokens never has to invent a
+            // colour — see {@see DesignController} (greenhouse decisions/0298).
+            new Route(
+                path: '/design/{file}',
+                methods: HttpMethod::GET,
+                name: 'design.file',
+                handler: new HandlerReference(DesignController::class, 'file'),
+            ),
+            new Route(
+                path: '/design/fonts/{face}',
+                methods: HttpMethod::GET,
+                name: 'design.face',
+                handler: new HandlerReference(DesignController::class, 'face'),
             ),
         ];
     }
