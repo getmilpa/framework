@@ -1,6 +1,18 @@
 # Changelog
 
 
+## [0.52.0](https://github.com/getmilpa/framework/compare/v0.51.1...v0.52.0) (2026-09-11)
+
+
+### Features
+
+* **welcome:** the page says where the house stands, derived, and only what a stranger may know ([#139](https://github.com/getmilpa/framework/issues/139)) ([9d7ae5b](https://github.com/getmilpa/framework/commit/9d7ae5b23f4fc5078a1718cfb74088833e7e0554))
+
+
+### Bug Fixes
+
+* **welcome:** the house derives its design-system URLs and types the prefix once ([#138](https://github.com/getmilpa/framework/issues/138)) ([aff0678](https://github.com/getmilpa/framework/commit/aff0678f0786ae1b5aaf6df06cf70e3903a75cfd))
+
 ## [0.51.1](https://github.com/getmilpa/framework/compare/v0.51.0...v0.51.1) (2026-09-11)
 
 
