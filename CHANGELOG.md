@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.50.1](https://github.com/getmilpa/framework/compare/v0.50.0...v0.50.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **welcome:** it stops explaining the mechanism and lets the product prove it ([#132](https://github.com/getmilpa/framework/issues/132)) ([d326d68](https://github.com/getmilpa/framework/commit/d326d685105d7a242c2cfd42062b3c9a3c102255))
+
 ## [0.50.0](https://github.com/getmilpa/framework/compare/v0.49.1...v0.50.0) (2026-09-11)
 
 
