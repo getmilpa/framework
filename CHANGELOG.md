@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.49.1](https://github.com/getmilpa/framework/compare/v0.49.0...v0.49.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* the welcome page uses Milpa's design system instead of six hand-picked hexes ([#127](https://github.com/getmilpa/framework/issues/127)) ([b1b326a](https://github.com/getmilpa/framework/commit/b1b326a9d9e8ebea02e8f10fbf38f7988059bb91))
+
 ## [0.49.0](https://github.com/getmilpa/framework/compare/v0.48.1...v0.49.0) (2026-09-10)
 
 
