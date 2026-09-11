@@ -56,6 +56,20 @@ final class TheWelcomePageIsComposedTest extends TestCase
         return (string) preg_replace('~/\*.*?\*/~s', '', self::page());
     }
 
+    /**
+     * The page with every comment removed — CSS and HTML both.
+     *
+     * 🚨 THIRD TIME IN ONE SESSION, so it is a habit and not an accident: a claim about what the page
+     * SAYS cannot be measured against text that explains what it stopped saying. `selectorsOnly()`
+     * was written when a CSS comment quoting a retired selector broke a selector assertion; this
+     * exists because the HTML comment explaining a retired SENTENCE contains that sentence. Both are
+     * good comments — a good comment quotes what it removed, which is exactly what makes it collide.
+     */
+    private static function copyOnly(): string
+    {
+        return (string) preg_replace(['~<!--.*?-->~s', '~/\*.*?\*/~s'], '', self::page());
+    }
+
     /** The mark Rod could not find anywhere on the page, as the component that owns it. */
     public function testTheHousesMarkIsOnThePageAsAComponent(): void
     {
@@ -101,13 +115,42 @@ final class TheWelcomePageIsComposedTest extends TestCase
     {
         $html = self::page();
 
-        self::assertStringContainsString('<ul class="ways-out">', $html);
+        self::assertStringContainsString('<ul class="ways-out"', $html);
         self::assertStringNotContainsString('<ol', $html, 'nothing here is a sequence any more');
         self::assertStringNotContainsString('counter-increment', self::selectorsOnly());
 
         // The dry-run is present on purpose: it teaches in the first minute that this house lets you
         // ask what a change would do before making it.
         self::assertStringContainsString('--dry-run', $html);
+
+        // The group has a real label the list points at, rather than a loose paragraph above it.
+        self::assertStringContainsString('<h3 class="or" id="or-explore">Or explore</h3>', $html);
+        self::assertStringContainsString('aria-labelledby="or-explore"', $html);
+    }
+
+    /**
+     * 🚨 NEITHER THE DOOR NOR THE ALTERNATIVES EXPLAIN THEIR OWN MECHANISM.
+     *
+     * The intro used to carry a second sentence — «every step it names is a command this app offers
+     * today, and following one changes what it answers» — and each alternative used to describe what
+     * its command does internally («pausing for your consent», «and what it could do next»). All of it
+     * was true, and all of it was the page promising what running the command proves. A label that
+     * promises a behaviour is a promise this page has to keep in sync with a package it does not own.
+     */
+    public function testThePageNamesWhatTheReaderWantsAndNotHowItWorks(): void
+    {
+        $html = self::copyOnly();
+
+        self::assertStringContainsString('Ask the house where it stands and what comes next.', $html);
+        self::assertStringNotContainsString('following one changes what it answers', $html);
+        self::assertStringNotContainsString('Or look around first', $html, 'a colon makes a label an instruction');
+
+        foreach (['See what it can do', 'Preview a change', 'Apply a recipe', 'Enter the house'] as $concept) {
+            self::assertStringContainsString('>' . $concept . '<', $html);
+        }
+        foreach (['and what it could do next', 'pausing for your consent', 'every operation on one screen'] as $mechanism) {
+            self::assertStringNotContainsString($mechanism, $html);
+        }
     }
 
     /**
@@ -245,6 +288,28 @@ final class TheWelcomePageIsComposedTest extends TestCase
 
         // And the block is NOT given the same permission: it scrolls instead of wrapping.
         self::assertStringNotContainsString('.line { overflow-wrap', $css);
+
+        // 🚨 A COMMAND DOES NOT WRAP ANYWHERE ON THIS PAGE — it scrolls, chip or block.
+        //
+        // Measured at 500px: `anywhere` split `recipe:apply --recipe=notes` as «--» / «recipe=notes»,
+        // a break that invents an argument. `break-word` fixed two of three chips and left that one,
+        // because a HYPHEN is a natural break opportunity in CSS line breaking rather than an overflow
+        // break — no `overflow-wrap` value can refuse it. So the chip carries its own scroller, which
+        // is exactly what `code-block` does with its body.
+        self::assertMatchesRegularExpression(
+            '/\.ways-out code\s*\{[^}]*white-space:\s*pre/',
+            $css,
+            'a wrapped shell line reads as two commands',
+        );
+        self::assertMatchesRegularExpression('/\.ways-out code\s*\{[^}]*overflow-x:\s*auto/', $css);
+        self::assertMatchesRegularExpression('/\.ways-out code\s*\{[^}]*max-width:\s*100%/', $css, 'or the scroller widens the page instead');
+        // 🚨 And the line that actually holds it: a flex item's `min-width: auto` is min-content, and
+        // min-content for `white-space: pre` is the whole command — measured at 581px of document in a
+        // 500px viewport the moment the scroller was added without this.
+        self::assertMatchesRegularExpression('/\.ways-out code\s*\{[^}]*min-width:\s*0/', $css);
+        // And on the ROW, which is the grid item that actually has to agree to shrink: measured at
+        // 532px wide inside a 402px list, with the chip's own `min-width: 0` changing nothing.
+        self::assertMatchesRegularExpression('/\.ways-out > li\s*\{[^}]*min-width:\s*0/', $css);
     }
 
     /**
