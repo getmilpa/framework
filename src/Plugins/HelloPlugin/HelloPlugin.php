@@ -97,12 +97,28 @@ final class HelloPlugin implements PluginInterface, RouteProviderInterface
     {
     }
 
+    /** This house's design-system mount point — see {@see designPrefix()}. */
+    private const string DESIGN_PREFIX = '/design';
+
     public function enable(): void
     {
     }
 
     public function disable(): void
     {
+    }
+
+    /**
+     * Where this house mounts the design system — the one place the prefix is typed.
+     *
+     * The five files under it come from {@see \Milpa\Live\Support\DesignTokens::urls()} rather than from typing, and the
+     * two route PATTERNS below (`{file}`, `{face}`) are this house's shape, which no authority can
+     * produce for it. What is shared is the prefix and the filenames; the shape stays local
+     * (greenhouse decisions/0308).
+     */
+    public static function designPrefix(): string
+    {
+        return self::DESIGN_PREFIX;
     }
 
     /** @return list<Route> */
@@ -120,13 +136,13 @@ final class HelloPlugin implements PluginInterface, RouteProviderInterface
             // and two of them were unreadable. A page that can link the tokens never has to invent a
             // colour — see {@see DesignController} (greenhouse decisions/0298).
             new Route(
-                path: '/design/{file}',
+                path: self::DESIGN_PREFIX . '/{file}',
                 methods: HttpMethod::GET,
                 name: 'design.file',
                 handler: new HandlerReference(DesignController::class, 'file'),
             ),
             new Route(
-                path: '/design/fonts/{face}',
+                path: self::DESIGN_PREFIX . '/fonts/{face}',
                 methods: HttpMethod::GET,
                 name: 'design.face',
                 handler: new HandlerReference(DesignController::class, 'face'),
