@@ -67,15 +67,84 @@ final class TheWelcomePageIsComposedTest extends TestCase
         self::assertStringContainsString('data-state="ready"', $html);
     }
 
-    /** Every command is a block, and every block offers to be taken. */
-    public function testEveryCommandIsACodeBlockWithItsCopyAffordance(): void
+    /**
+     * 🚨 ONE BLOCK, BECAUSE THERE IS ONE DOOR — and the page does not own the steps behind it.
+     *
+     * This used to assert eight. The defect was not their number: it was that a page cannot know what
+     * an app's next step is. `house:start` declares its `next` as «the next real steps, in order: each
+     * {step, command, why} — every command is one this app offers today», and its observable evidence
+     * is that «following the first one literally changes what `house:start` answers next». A page that
+     * retyped those steps would be inventing a criterion something else already owns, and would go
+     * stale the moment a capability is switched on (greenhouse decisions/0301).
+     */
+    public function testItHandsOverOneDoorRatherThanAListOfSteps(): void
     {
         $html = self::page();
 
-        $blocks = substr_count($html, '<div data-milpa-component="code-block"');
-        self::assertSame(8, $blocks, 'the first five minutes are eight commands');
-        self::assertSame($blocks, substr_count($html, 'data-milpa-copy='), 'each one can be taken');
+        self::assertSame(
+            1,
+            substr_count($html, '<div data-milpa-component="code-block"'),
+            'one door; the steps behind it belong to the house',
+        );
         self::assertStringContainsString('php bin/coa house:start', $html);
+        self::assertSame(1, substr_count($html, 'data-milpa-copy='), 'and it can be taken');
+    }
+
+    /**
+     * The ways out are alternatives, so they carry no number and no block of their own.
+     *
+     * Numbering alternatives is what the eight-step list did wrong — it asserted an order between
+     * things that have none. A `code-block` each would also give four framed terminals the same weight
+     * as the door, and the door's whole point is that it is not one of four.
+     */
+    public function testTheWaysOutAreAlternativesAndNotASecondSequence(): void
+    {
+        $html = self::page();
+
+        self::assertStringContainsString('<ul class="ways-out">', $html);
+        self::assertStringNotContainsString('<ol', $html, 'nothing here is a sequence any more');
+        self::assertStringNotContainsString('counter-increment', self::selectorsOnly());
+
+        // The dry-run is present on purpose: it teaches in the first minute that this house lets you
+        // ask what a change would do before making it.
+        self::assertStringContainsString('--dry-run', $html);
+    }
+
+    /**
+     * 🚨 NO GENERIC SELECTOR IN THIS PANEL OUTRANKS A NAMED ONE OVER SPACING.
+     *
+     * `.next > p { margin-top: 0 }` existed to close the gap under the heading, and as a child selector
+     * it beat `.or` — (0,1,1) against (0,1,0) — zeroing the margin of a paragraph that is not its
+     * business. Measured in a browser: `.or` computed `margin-top: 0px` and sat flush against the block
+     * above it. It is now `h2 + p`, which is the paragraph the rule was actually about.
+     */
+    public function testTheHeadingsParagraphRuleDoesNotOutrankTheNamedOnes(): void
+    {
+        $css = self::selectorsOnly();
+
+        self::assertStringContainsString('.next > h2 + p {', $css);
+        self::assertDoesNotMatchRegularExpression('/\.next > p\s*\{/', $css, 'that one reached every paragraph in the panel');
+    }
+
+    /**
+     * 🚨 THE PLUMBING IS DISCLOSED, NOT DELETED.
+     *
+     * Two paragraphs of class names were the second thing a newcomer read, competing with the first
+     * experience. They are genuinely useful to a developer inspecting how the request was handled, so
+     * they move behind `<details>` — native, keyboard reachable, no script — rather than out of the
+     * page. Architecture can be deep without making the first screen explain all of it.
+     */
+    public function testThePlumbingIsBehindADisclosureAndStillThere(): void
+    {
+        $html = self::page();
+
+        self::assertStringContainsString('<details class="plumbing">', $html);
+        self::assertStringContainsString('<summary>How this request was handled</summary>', $html);
+        self::assertStringContainsString('HomeController', $html, 'still inspectable, just not announced');
+        self::assertStringContainsString('Milpa\\Runtime\\Http\\RequestHandler', $html);
+
+        // Not open by default, or it is not a disclosure.
+        self::assertStringNotContainsString('<details class="plumbing" open', $html);
     }
 
     /**
@@ -134,7 +203,7 @@ final class TheWelcomePageIsComposedTest extends TestCase
     {
         $html = self::page();
 
-        self::assertStringContainsString('p code {', $html);
+        self::assertStringContainsString('p code, .ways-out code {', $html);
         self::assertDoesNotMatchRegularExpression(
             '/^\s*code\s*\{/m',
             self::selectorsOnly(),
@@ -169,7 +238,7 @@ final class TheWelcomePageIsComposedTest extends TestCase
         $css = self::selectorsOnly();
 
         self::assertMatchesRegularExpression(
-            '/p code\s*\{[^}]*overflow-wrap:\s*anywhere/',
+            '/p code, \.ways-out code\s*\{[^}]*overflow-wrap:\s*anywhere/',
             $css,
             'a namespaced class name in a chip would otherwise set the width of the whole page',
         );
@@ -230,7 +299,7 @@ final class TheWelcomePageIsComposedTest extends TestCase
     {
         $css = self::selectorsOnly();
 
-        self::assertMatchesRegularExpression('/p code\s*\{[^}]*background:\s*var\(--surface-raised\)/', $css);
+        self::assertMatchesRegularExpression('/p code, \.ways-out code\s*\{[^}]*background:\s*var\(--surface-raised\)/', $css);
         self::assertMatchesRegularExpression('/\.next\s*\{[^}]*background:\s*var\(--surface\)/', $css);
     }
 
@@ -240,13 +309,4 @@ final class TheWelcomePageIsComposedTest extends TestCase
         self::assertStringContainsString('max-width: var(--container-narrow)', self::selectorsOnly());
     }
 
-    /** The steps are an ordered list because they ARE a sequence — the marker reads the order. */
-    public function testTheStepsAreAnOrderedListAndTheNumbersAreNotWrittenIntoTheWords(): void
-    {
-        $html = self::page();
-
-        self::assertStringContainsString('<ol class="steps">', $html);
-        self::assertStringContainsString('counter-increment: step', $html);
-        self::assertStringNotContainsString('<li>1.', $html, 'the order is data, not typed prose');
-    }
 }
