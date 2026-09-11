@@ -97,7 +97,9 @@ final class HomeController
         ['does' => 'See what it can do', 'command' => 'php bin/coa capabilities'],
         ['does' => 'Preview a change', 'command' => 'php bin/coa capabilities:enable milpa/agent --dry-run'],
         ['does' => 'Apply a recipe', 'command' => 'php bin/coa recipe:apply --recipe=notes'],
-        ['does' => 'Enter the house', 'command' => 'php bin/coa shell'],
+        // «Work in», not «Enter»: you are already inside — the app is answering this request. What the
+        // shell adds is a place to WORK, which is the concept the other three are named by too.
+        ['does' => 'Work in the house', 'command' => 'php bin/coa shell'],
     ];
 
     /**
@@ -328,19 +330,45 @@ final class HomeController
                            component declares its own paint. Both, because either alone is one stranger
                            away from the same chip. */
                         p code {
-                            /* 🚨 `--surface-raised`, BECAUSE `--surface` IS WHAT THE PANEL IS PAINTED.
-                               Measured: of the ten chips on this page, the four inside the panel sat at
-                               1.000:1 against their own ground — the identical colour, so no chip at all
-                               — while the six outside reached 1.416:1. The same markup rendered as a chip
-                               in one half of the page and as plain text in the other.
+                            /* 🚨 THE CHIP GETS THE BLOCK'S TREATMENT: the darkest ground AND the edge that
+                               makes it readable on any surface. Same thing a command gets, because it is
+                               the same kind of thing.
 
-                               An earlier note here argued for `--surface` on the grounds that «an inline
-                               tint is not a raised block». That reasoning was about the token's NAME; a
-                               chip needs a ground that differs from every surface it can land on, and on
-                               this page `--surface` is one of them. */
-                            background: var(--surface-raised);
+                               The ground alone cannot do it. `--tierra-950` IS `--bg` — the same
+                               #17120D — so a flat dark chip sits at 1.000:1 against the prose it lives
+                               in: invisible, which is the defect this rule was rewritten to fix once
+                               already. The block solved that with a line, and the arithmetic is the
+                               reason: `--border-strong` measures 4.429:1 against `--bg` and 3.128:1
+                               against `--surface`, so one border works on BOTH surfaces this page paints
+                               while no fill in the dark half of the palette works on either.
+
+                               Two earlier answers here were each right about one half. `--surface` made
+                               the four chips inside the panel vanish (identical colour).
+                               `--surface-raised` made all ten visible but left them lighter than the
+                               commands they quote — which is what the reader saw. */
+                            background: var(--tierra-950);
+                            border: 1px solid var(--border-strong);
                             color: var(--text);
-                            padding: 0.15em 0.4em;
+                            /* 🚨 THE CHIP'S BOX HAS TO FIT INSIDE THE LINE IT SITS IN.
+                               Measured with the border added: the chip stood 31px tall in a 27.2px line
+                               box, so chips on consecutive lines overlapped by 4px and 3px. The overlap
+                               was VERTICAL — the horizontal gaps measured 10px and 71px, so the touching
+                               was never a spacing problem between neighbours.
+
+                               An inline box's border box is sized by the FONT's metrics, not by
+                               line-height, and Space Mono's are tall (~1.5em against Space Grotesk's
+                               body line). So the fix is both halves: the face comes down to `0.875em` —
+                               the exact `--text-sm` / `--text-base` ratio, derived from the scale rather
+                               than picked by eye, and relative so it tracks whatever text surrounds it —
+                               and the vertical padding comes down with it.
+
+                               `0.75em` and not something between: that is the `--text-xs` /
+                               `--text-base` ratio, one rung down on the scale the system defines.
+                               `0.8125em` would read as «a little smaller» too and would be a value
+                               picked by eye, which is the thing this page exists as an example
+                               against. */
+                            font-size: 0.75em;
+                            padding: 0.08em 0.4em;
                             border-radius: var(--radius-sm);
                             font-family: var(--font-mono);
                             /* 🚨 A CHIP MAY BREAK MID-WORD, BECAUSE A CLASS NAME HAS NO SPACES IN IT.

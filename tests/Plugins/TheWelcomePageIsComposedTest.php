@@ -152,7 +152,7 @@ final class TheWelcomePageIsComposedTest extends TestCase
         self::assertStringNotContainsString('following one changes what it answers', $html);
         self::assertStringNotContainsString('Or look around first', $html, 'a colon makes a label an instruction');
 
-        foreach (['See what it can do', 'Preview a change', 'Apply a recipe', 'Enter the house'] as $concept) {
+        foreach (['See what it can do', 'Preview a change', 'Apply a recipe', 'Work in the house'] as $concept) {
             self::assertStringContainsString('>' . $concept . '<', $html);
         }
         foreach (['and what it could do next', 'pausing for your consent', 'every operation on one screen'] as $mechanism) {
@@ -221,7 +221,13 @@ final class TheWelcomePageIsComposedTest extends TestCase
      */
     public function testTheOnlyLiteralColourOnThePageIsTheMarksGold(): void
     {
-        preg_match_all('/#[0-9a-fA-F]{3,6}\b/', self::page(), $found);
+        // 🚨 COMMENT-STRIPPED, AND THAT IS THE FOURTH TIME IN ONE SESSION. A note in this page's own
+        // stylesheet quotes `#17120D` to explain why `--tierra-950` and `--bg` being the same colour
+        // forces a border onto the chip — and CSS comments ship to the browser, so the arithmetic that
+        // JUSTIFIES using only tokens broke the assertion that only tokens are used. Same shape as the
+        // retired selector quoted in its own retirement note, twice, and the retired sentence quoted in
+        // its own. A claim about what a stylesheet DOES cannot be measured against text about it.
+        preg_match_all('/#[0-9a-fA-F]{3,6}\b/', self::copyOnly(), $found);
 
         self::assertSame([DesignTokens::MARK_GOLD], array_values(array_unique($found[0])));
     }
@@ -442,7 +448,13 @@ final class TheWelcomePageIsComposedTest extends TestCase
     {
         $css = self::selectorsOnly();
 
-        self::assertMatchesRegularExpression('/p code\s*\{[^}]*background:\s*var\(--surface-raised\)/', $css);
+        // 🚨 THE CHIP GETS THE BLOCK'S TREATMENT — the darkest ground AND the edge, because it is the
+        // same kind of thing as a command. The ground alone cannot do it: `--tierra-950` IS `--bg`, so
+        // a flat dark chip sits at 1.000:1 against the prose around it. `--border-strong` measures
+        // 4.429:1 against `--bg` and 3.128:1 against `--surface` — one line that works on both
+        // surfaces this page paints, where no fill in the palette's dark half works on either.
+        self::assertMatchesRegularExpression('/p code\s*\{[^}]*background:\s*var\(--tierra-950\)/', $css);
+        self::assertMatchesRegularExpression('/p code\s*\{[^}]*border:\s*1px solid var\(--border-strong\)/', $css);
         self::assertMatchesRegularExpression('/\.next\s*\{[^}]*background:\s*var\(--surface\)/', $css);
     }
 
