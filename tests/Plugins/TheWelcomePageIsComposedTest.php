@@ -95,13 +95,20 @@ final class TheWelcomePageIsComposedTest extends TestCase
     {
         $html = self::page();
 
-        self::assertSame(
-            1,
-            substr_count($html, '<div data-milpa-component="code-block"'),
-            'one door; the steps behind it belong to the house',
-        );
+        // 🚨 ONE DOOR AND FOUR ALTERNATIVES, told apart by `data-compact` rather than by count.
+        //
+        // This asserted «1 block» until the four alternatives became compact components. The claim was
+        // never about the number: it is that exactly one command is PRESENTED — framed, prompted, on
+        // its own line — and the rest are listed. A count cannot say that; the variant can.
+        self::assertSame(5, substr_count($html, '<div data-milpa-component="code-block"'));
+        self::assertSame(4, substr_count($html, 'data-compact="true"'), 'four listed');
         self::assertStringContainsString('php bin/coa house:start', $html);
-        self::assertSame(1, substr_count($html, 'data-milpa-copy='), 'and it can be taken');
+
+        // The door is the only one with a prompt: it is the thing being run.
+        self::assertSame(1, substr_count($html, 'class="prompt"'));
+
+        // And every command can be taken — which is what a plain `<code>` chip could not offer.
+        self::assertSame(5, substr_count($html, 'data-milpa-copy='), 'all five, not just the door');
     }
 
     /**
@@ -246,12 +253,93 @@ final class TheWelcomePageIsComposedTest extends TestCase
     {
         $html = self::page();
 
-        self::assertStringContainsString('p code, .ways-out code {', $html);
+        self::assertStringContainsString('p code {', $html);
         self::assertDoesNotMatchRegularExpression(
             '/^\s*code\s*\{/m',
             self::selectorsOnly(),
             'a bare element selector would repaint the command inside every code-block on the page',
         );
+    }
+
+    /**
+     * 🚨 EVERY COMMAND STARTS AT THE SAME X, and only a shared grid track can promise that.
+     *
+     * Each row used to be its own flex line, so four labels of four different lengths pushed their
+     * commands to four different offsets — read as «los mandos no estan alineados, se ve sucio». A
+     * per-row layout cannot align across rows; `subgrid` is what makes the rows share the list's
+     * tracks instead of inventing their own.
+     */
+    public function testEveryCommandStartsAtTheSameXBecauseTheRowsShareOneGrid(): void
+    {
+        $css = self::selectorsOnly();
+
+        self::assertMatchesRegularExpression('/\.ways-out\s*\{[^}]*grid-template-columns:\s*max-content 1fr/', $css);
+        self::assertMatchesRegularExpression('/\.ways-out > li\s*\{[^}]*grid-template-columns:\s*subgrid/', $css);
+        self::assertMatchesRegularExpression('/\.ways-out > li\s*\{[^}]*grid-column:\s*1 \/ -1/', $css);
+
+        // 🚨 And the block hugs its command rather than filling the track. A grid item stretches by
+        // default, so each compact block measured 544px wide with up to 341px of empty box after its
+        // command — a terminal that is not full. `justify-self` is the item's participation in THIS
+        // page's grid, so it is the page's to set, through the component's public root attribute.
+        self::assertMatchesRegularExpression(
+            '/\.ways-out \[data-milpa-component="code-block"\]\s*\{[^}]*justify-self:\s*start/',
+            $css,
+        );
+    }
+
+    /** «Or explore» is a title: the heading face, bold, a step up from the labels it governs. */
+    public function testOrExploreReadsAsATitleAndNotAsAMutedAside(): void
+    {
+        $css = self::selectorsOnly();
+
+        self::assertMatchesRegularExpression('/\.or\s*\{[^}]*font-family:\s*var\(--font-heading\)/', $css);
+        self::assertMatchesRegularExpression('/\.or\s*\{[^}]*font-size:\s*var\(--text-lg\)/', $css);
+        self::assertMatchesRegularExpression('/\.or\s*\{[^}]*font-weight:\s*700/', $css);
+        self::assertMatchesRegularExpression('/\.or\s*\{[^}]*color:\s*var\(--text\)/', $css, 'muted made it look like the labels');
+    }
+
+    /**
+     * 🚨 THE HOUSE SAYS WHICH FRAMEWORK IT RUNS, and only one file can answer that.
+     *
+     * `milpa/framework` is the ROOT package of a created app, so it is not in `composer.lock`'s
+     * package list at all. `.milpa/framework.json` is the birth record — bumped by release-please on
+     * every release and extended by `tools/stamp-framework.php` on `create-project` — and a version
+     * typed into this page would be a second answer to a question that file already answers.
+     */
+    public function testItSaysWhichFrameworkTheHouseRuns(): void
+    {
+        $html = (string) (new HomeController('Milpa is running', '9.9.9'))
+            ->index(new ServerRequest('GET', '/'))->getBody();
+
+        self::assertStringContainsString('milpa/framework 9.9.9', $html);
+        self::assertMatchesRegularExpression('/\.version\s*\{[^}]*font-family:\s*var\(--font-mono\)/', $html);
+    }
+
+    /**
+     * And with no record it says nothing rather than guessing — a tree copied instead of created.
+     *
+     * The same discipline `house:start` follows: say what you could not do. A version invented here
+     * would be wrong in exactly the tree where knowing it matters.
+     */
+    public function testWithNoBirthRecordItSaysNothingRatherThanGuessing(): void
+    {
+        $html = (string) (new HomeController('Milpa is running'))
+            ->index(new ServerRequest('GET', '/'))->getBody();
+
+        self::assertStringNotContainsString('class="version"', $html);
+        // The links are not conditional on it: they are the framework's, not this app's.
+        self::assertStringContainsString('https://github.com/getmilpa/framework', $html);
+    }
+
+    /** Where the house can be read — the only two links on the page, and the only accent on it. */
+    public function testItLinksToTheSourceAndTheLanding(): void
+    {
+        $html = self::page();
+
+        self::assertStringContainsString('href="https://github.com/getmilpa/framework" rel="noopener noreferrer"', $html);
+        self::assertStringContainsString('href="https://milpa.lat" rel="noopener noreferrer"', $html);
+        self::assertSame(2, substr_count($html, '<a href='), 'two, and no more — this is a door, not a nav');
+        self::assertMatchesRegularExpression('/\.elsewhere a\s*\{[^}]*color:\s*var\(--accent\)/', self::selectorsOnly());
     }
 
     /** The system is served and linked, dark-first, with the mark as the tab icon. */
@@ -281,7 +369,7 @@ final class TheWelcomePageIsComposedTest extends TestCase
         $css = self::selectorsOnly();
 
         self::assertMatchesRegularExpression(
-            '/p code, \.ways-out code\s*\{[^}]*overflow-wrap:\s*anywhere/',
+            '/p code\s*\{[^}]*overflow-wrap:\s*anywhere/',
             $css,
             'a namespaced class name in a chip would otherwise set the width of the whole page',
         );
@@ -289,26 +377,16 @@ final class TheWelcomePageIsComposedTest extends TestCase
         // And the block is NOT given the same permission: it scrolls instead of wrapping.
         self::assertStringNotContainsString('.line { overflow-wrap', $css);
 
-        // 🚨 A COMMAND DOES NOT WRAP ANYWHERE ON THIS PAGE — it scrolls, chip or block.
+        // 🚨 AND THE PAGE NO LONGER SAYS ANYTHING ABOUT HOW A COMMAND WRAPS.
         //
-        // Measured at 500px: `anywhere` split `recipe:apply --recipe=notes` as «--» / «recipe=notes»,
-        // a break that invents an argument. `break-word` fixed two of three chips and left that one,
-        // because a HYPHEN is a natural break opportunity in CSS line breaking rather than an overflow
-        // break — no `overflow-wrap` value can refuse it. So the chip carries its own scroller, which
-        // is exactly what `code-block` does with its body.
-        self::assertMatchesRegularExpression(
-            '/\.ways-out code\s*\{[^}]*white-space:\s*pre/',
-            $css,
-            'a wrapped shell line reads as two commands',
-        );
-        self::assertMatchesRegularExpression('/\.ways-out code\s*\{[^}]*overflow-x:\s*auto/', $css);
-        self::assertMatchesRegularExpression('/\.ways-out code\s*\{[^}]*max-width:\s*100%/', $css, 'or the scroller widens the page instead');
-        // 🚨 And the line that actually holds it: a flex item's `min-width: auto` is min-content, and
-        // min-content for `white-space: pre` is the whole command — measured at 581px of document in a
-        // 500px viewport the moment the scroller was added without this.
-        self::assertMatchesRegularExpression('/\.ways-out code\s*\{[^}]*min-width:\s*0/', $css);
-        // And on the ROW, which is the grid item that actually has to agree to shrink: measured at
-        // 532px wide inside a 402px list, with the chip's own `min-width: 0` changing nothing.
+        // It spent three measurements re-deriving a rule `code-block` already had: `anywhere` split
+        // `--recipe=notes` into «--» / «recipe=notes», `break-word` could not refuse a hyphen's natural
+        // break, and the scroller that fixed it then widened the document to 581px. Composing the
+        // commands retired all of it — the component refuses to wrap and scrolls instead, because a
+        // wrapped shell line reads as two commands.
+        self::assertStringNotContainsString('.ways-out code', $css, 'that rule belongs to the component now');
+        // The row still has to agree to shrink: a grid item's `min-width: auto` is min-content, which
+        // includes the command that will not wrap. Measured at 532px wide inside a 402px list.
         self::assertMatchesRegularExpression('/\.ways-out > li\s*\{[^}]*min-width:\s*0/', $css);
     }
 
@@ -364,7 +442,7 @@ final class TheWelcomePageIsComposedTest extends TestCase
     {
         $css = self::selectorsOnly();
 
-        self::assertMatchesRegularExpression('/p code, \.ways-out code\s*\{[^}]*background:\s*var\(--surface-raised\)/', $css);
+        self::assertMatchesRegularExpression('/p code\s*\{[^}]*background:\s*var\(--surface-raised\)/', $css);
         self::assertMatchesRegularExpression('/\.next\s*\{[^}]*background:\s*var\(--surface\)/', $css);
     }
 
