@@ -84,13 +84,20 @@ final class HomeController
      * it teaches, in the first minute, that this house lets you ask what a change would do before
      * making it, which is the doctrine the rest of the framework is built on.
      *
+     * 🚨 FOUR LABELS, FOUR CONCEPTS, AND NOT ONE OF THEM EXPLAINS ITSELF. They used to read «See what
+     * it can do, AND WHAT IT COULD DO NEXT» and «Let a recipe do the first hour, PAUSING FOR YOUR
+     * CONSENT» — each one describing the mechanism behind the command instead of naming what the
+     * reader wants. The commands demonstrate their own mechanisms when they run; a label that promises
+     * what a command will do is a promise the page has to keep in sync with a package it does not own.
+     * What survives is the concept: what it knows, what a change would do, reuse, and going in.
+     *
      * @var list<array{does: string, command: string}>
      */
     private const array WAYS_OUT = [
-        ['does' => 'See what it can do, and what it could do next', 'command' => 'php bin/coa capabilities'],
-        ['does' => 'Ask what switching one on would change, before it changes', 'command' => 'php bin/coa capabilities:enable milpa/agent --dry-run'],
-        ['does' => 'Let a recipe do the first hour, pausing for your consent', 'command' => 'php bin/coa recipe:apply --recipe=notes'],
-        ['does' => 'Work inside the house, every operation on one screen', 'command' => 'php bin/coa shell'],
+        ['does' => 'See what it can do', 'command' => 'php bin/coa capabilities'],
+        ['does' => 'Preview a change', 'command' => 'php bin/coa capabilities:enable milpa/agent --dry-run'],
+        ['does' => 'Apply a recipe', 'command' => 'php bin/coa recipe:apply --recipe=notes'],
+        ['does' => 'Enter the house', 'command' => 'php bin/coa shell'],
     ];
 
     public function __construct(private readonly string $greeting)
@@ -343,15 +350,65 @@ final class HomeController
                            is the cascade collision this page is supposed to be an example against. */
                         .next > h2 + p { margin-top: 0; }
                         /* The door is the one thing with a block; everything after it is quieter. */
-                        .or { color: var(--text-muted); margin: var(--space-6) 0 var(--space-3); }
+                        .or {
+                            color: var(--text-muted);
+                            font-family: var(--font-body);
+                            font-size: var(--text-base);
+                            font-weight: 400;
+                            margin: var(--space-6) 0 var(--space-3);
+                        }
 
                         /* THE WAYS OUT ARE NOT STEPS, so they carry no number and no rule between them:
                            they are alternatives, and numbering alternatives is exactly what the eight-step
                            list did wrong. A sentence and the command that does it. */
                         .ways-out { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
-                        .ways-out > li { display: grid; gap: var(--space-1); }
+                        /* ONE LINE EACH: the concept, then the command. `wrap` because the longest of
+                           them is the `--dry-run`, and a row that cannot wrap is the page scrolling
+                           sideways again. */
+                        .ways-out > li {
+                            display: flex;
+                            flex-wrap: wrap;
+                            align-items: baseline;
+                            gap: var(--space-2);
+                            /* 🚨 THE ROW IS THE ONE THAT HAS TO AGREE TO SHRINK. It is a GRID item, and a
+                               grid item's `min-width` is `auto` — min-content — which includes the
+                               unwrappable chip inside it. Measured: the row stood 532px wide inside a
+                               402px list and pushed the document to 581px in a 500px viewport, while
+                               the chip's own `min-width: 0` changed nothing because it was inheriting
+                               the row's refusal. Two guesses cost me two measurements; walking the
+                               ancestor chain and reading `minWidth` at each level answered it at once. */
+                            min-width: 0;
+                        }
                         .ways-out .does { color: var(--text-muted); }
-                        .ways-out code { justify-self: start; }
+                        /* The dash is a separator, so it is drawn rather than written: a literal one in
+                           the markup would be read out between every label and command. */
+                        .ways-out .does::after { content: ' —'; }
+
+                        /* 🚨 A COMMAND DOES NOT WRAP — IT SCROLLS. Same rule `code-block` applies to its
+                           own body, and for the same reason: a wrapped shell line reads as two
+                           commands.
+
+                           It took two measurements to get here. `anywhere` split
+                           `recipe:apply --recipe=notes` as «--» / «recipe=notes» — a break that invents
+                           an argument. `break-word` fixed two of the three chips and left that one,
+                           because a HYPHEN is a natural break opportunity in CSS line breaking, not an
+                           overflow break: no `overflow-wrap` value can refuse it. So the chip stops
+                           wrapping at all and carries its own scroller, which is what the block beside
+                           it already does. The prose chips keep `anywhere`: a namespaced class name has
+                           no break opportunity, and letting IT set the page's width was the original
+                           defect. */
+                        .ways-out code {
+                            white-space: pre;
+                            overflow-x: auto;
+                            /* 🚨 `min-width: 0` IS THE LOAD-BEARING LINE. A flex item's `min-width` is
+                               `auto`, which resolves to min-content — and min-content for
+                               `white-space: pre` is the WHOLE command, so the chip refused to shrink
+                               and pushed the document to 581px in a 500px viewport. Measured
+                               immediately after adding the scroller: I had traded a misleading break
+                               for the sideways scroll this page already fixed once. */
+                            min-width: 0;
+                            max-width: 100%;
+                        }
                     </style>
                 </head>
                 <body>
@@ -382,11 +439,19 @@ final class HomeController
 
                     <section class="next" aria-labelledby="start-here">
                         <h2 id="start-here">Start here</h2>
-                        <p>Ask the house where it stands and what comes next. Every step it names is a
-                           command this app offers today, and following one changes what it answers.</p>
+                        <!-- ONE SENTENCE. The second one said «every step it names is a command this app
+                             offers today, and following one changes what it answers» — true, and it
+                             explained the mechanism. If `house:start` really derives the next step from
+                             the house's state then RUNNING IT demonstrates that sentence, so the page
+                             was promising what the product proves (greenhouse decisions/0302). -->
+                        <p>Ask the house where it stands and what comes next.</p>
                         __DOOR__
-                        <p class="or">Or look around first:</p>
-                        <ul class="ways-out">__WAYS_OUT__</ul>
+                        <!-- A HEADING AND NOT A SENTENCE. «Or look around first:» was tutorial voice,
+                             and a colon makes a label sound like an instruction. It is also the label of
+                             a group of four, so it is an `h3` the list points at rather than a loose
+                             paragraph — the structure a screen reader needs, at no visual cost. -->
+                        <h3 class="or" id="or-explore">Or explore</h3>
+                        <ul class="ways-out" aria-labelledby="or-explore">__WAYS_OUT__</ul>
                     </section>
                     __SCRIPTS__
                 </body>
