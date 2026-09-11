@@ -22,3 +22,6 @@ var/*
 # in a repository that would commit it. Its sibling `.milpa/agent.json` IS committed on purpose:
 # that one is the acta trail, and this one cannot travel (greenhouse decisions/0267).
 /.milpa/secrets.json
+
+# Coverage output: CI writes build/clover.xml for the floor gate.
+/build/
