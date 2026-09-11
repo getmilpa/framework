@@ -24,6 +24,7 @@ use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
 use Milpa\Runtime\Kernel;
 use Milpa\AppRuntime\Framework\FrameworkStamp;
+use Milpa\AppRuntime\Operations\AgentOperations;
 use Milpa\Runtime\Config;
 use Milpa\Runtime\Http\RouteProviderInterface;
 
@@ -78,7 +79,21 @@ final class HelloPlugin implements PluginInterface, RouteProviderInterface
         // Wire the values into the collaborator that renders them. The controller is resolved from
         // the container at request time, so registering the built instance here is what makes the
         // config value reach the page — the plugin owns that wiring, the controller stays dumb.
-        $this->container->registerService(HomeController::class, new HomeController($greeting, $version));
+        // HOW THE PAGE ASKS WHERE THE HOUSE STANDS: the SAME handler `house:start` runs, called at
+        // request time from inside the app. Not over http — that operation declares
+        // `surfaces: ['cli','tui','mcp']` precisely because its answer carries the app's filesystem
+        // root, and an ops route under `expose: ['*']` would hand that to whoever asked. This page is
+        // not a client of the operation; it is a controller in the same process calling the same
+        // handler, and {@see HouseState} is what holds the boundary instead of the surface list.
+        //
+        // A closure because the Kernel enters the container AFTER this boot (greenhouse evidence/0294):
+        // asked now there is no house yet, asked at request time there is.
+        $container = $this->container;
+        $state = static fn (): HouseState => HouseState::fromAnswer(
+            (new AgentOperations($container))->houseStart(),
+        );
+
+        $this->container->registerService(HomeController::class, new HomeController($greeting, $version, $state));
     }
 
     /** Where this app lives, asked of the Kernel rather than derived from `__DIR__`. */
