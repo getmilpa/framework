@@ -20,8 +20,10 @@ use Milpa\Live\Components\BrandMarkComponent;
 use Milpa\Live\Components\CodeBlockComponent;
 use Milpa\Live\Contracts\Component\ComponentDefinitionInterface;
 use Milpa\Live\Contracts\Rendering\ComponentRendererInterface;
+use App\Plugins\HelloPlugin\HelloPlugin;
 use Milpa\Live\Rendering\BrandMarkHtmlRenderer;
 use Milpa\Live\Rendering\CodeBlockHtmlRenderer;
+use Milpa\Live\Support\DesignTokens;
 use Milpa\Live\ValueObjects\ComponentContext;
 use Milpa\Live\ValueObjects\RenderRequest;
 use Milpa\Live\ValueObjects\RenderTarget;
@@ -223,12 +225,30 @@ final class HomeController
         return $html;
     }
 
+    /**
+     * The design system's tags, from the authority rather than from typing.
+     *
+     * The three filenames used to be spelled here, a fourth time in this family, and the prefix a
+     * fourth WAY — which is how `/design/` came to exist next to `/webauthn/`, `/admin/assets/` and
+     * `/live/` without anyone choosing four. {@see HelloPlugin::designPrefix()} owns the prefix and
+     * {@see DesignTokens::urls()} owns the filenames; this method owns neither
+     * (greenhouse decisions/0308).
+     */
+    private static function designLinks(): string
+    {
+        $design = DesignTokens::urls(HelloPlugin::designPrefix());
+
+        return '<link rel="stylesheet" href="' . $design[DesignTokens::TOKENS] . '">'
+            . '<link rel="stylesheet" href="' . $design[DesignTokens::FONTS] . '">'
+            . DesignTokens::iconLink($design[DesignTokens::APP_ICON]);
+    }
+
     private function html(): string
     {
         $assets = self::assets();
 
         return \str_replace(
-            ['__GREETING__', '__MARK__', '__DOOR__', '__WAYS_OUT__', '__ELSEWHERE__', '__STYLES__', '__SCRIPTS__'],
+            ['__GREETING__', '__MARK__', '__DOOR__', '__WAYS_OUT__', '__ELSEWHERE__', '__DESIGN__', '__STYLES__', '__SCRIPTS__'],
             [
                 htmlspecialchars($this->greeting, \ENT_QUOTES, 'UTF-8'),
                 // READY, not `sown`: the mark reports what the surface is doing, and this page has
@@ -238,6 +258,7 @@ final class HomeController
                 self::door(),
                 self::waysOut(),
                 $this->elsewhere(),
+                self::designLinks(),
                 $assets->styleTag(),
                 $assets->scriptTag(),
             ],
@@ -248,9 +269,7 @@ final class HomeController
                     <meta charset="utf-8">
                     <title>Milpa is running</title>
                     <meta name="viewport" content="width=device-width, initial-scale=1">
-                    <link rel="stylesheet" href="/design/milpa-tokens.css">
-                    <link rel="stylesheet" href="/design/milpa-fonts.css">
-                    <link rel="icon" type="image/svg+xml" href="/design/milpa-app-icon.svg">
+                    __DESIGN__
                     __STYLES__
                     <style>
                         /* LAYOUT AND WORDS ONLY — no colour of its own, and nothing that a component owns.

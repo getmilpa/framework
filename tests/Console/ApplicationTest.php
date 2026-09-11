@@ -464,6 +464,14 @@ final class ApplicationTest extends TestCase
         $texto = (string) ob_get_clean();
 
         self::assertSame(1, $codigo);
-        self::assertStringContainsString('uso: coa repair', $texto);
+        // 🚨 THE SHAPE, NOT THE SENTENCE. This asserted `uso: coa repair` — a dependency's exact copy,
+        // in the language it happened to be written in. `milpa/app-runtime` translated that line and
+        // CI went red here while this suite stayed green locally, because the lock pinned v0.151.0 and
+        // CI's `composer require --dev` re-resolved to v0.151.4. A package behind the registry does
+        // not break the run; it makes the suite lie (greenhouse decisions/0308).
+        //
+        // What this test actually cares about is that a bare `repair` REFUSES and names the argument
+        // it wanted. The wording is app-runtime's to choose and to internationalize.
+        self::assertStringContainsString('repair <', $texto, 'it names the argument it was missing');
     }
 }
