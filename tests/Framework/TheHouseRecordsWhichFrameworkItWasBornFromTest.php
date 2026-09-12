@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Framework;
 
+use App\Tests\Support\TemporaryDirectory;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -32,6 +33,16 @@ use PHPUnit\Framework\TestCase;
  */
 final class TheHouseRecordsWhichFrameworkItWasBornFromTest extends TestCase
 {
+    /** @var list<TemporaryDirectory> */
+    private array $trees = [];
+
+    protected function tearDown(): void
+    {
+        foreach ($this->trees as $tree) {
+            $tree->remove();
+        }
+    }
+
     private static function root(): string
     {
         return \dirname(__DIR__, 2);
@@ -62,14 +73,27 @@ final class TheHouseRecordsWhichFrameworkItWasBornFromTest extends TestCase
         self::assertArrayNotHasKey('phpunit.xml', $tracked, 'the skeleton\'s own harness is not something a house diverges from');
     }
 
-    /** The shipped file says which framework the tree is, and release-please is what bumps it. */
-    public function testTheShippedFileCarriesTheVersionAndNoBirthRecord(): void
+    /** The tree keeps its version both before and after Composer writes its birth record. */
+    public function testTheTreeCarriesTheVersionAndAValidBirthRecordWhenStamped(): void
     {
         $record = json_decode((string) file_get_contents(self::root() . '/.milpa/framework.json'), true);
 
         self::assertIsArray($record);
         self::assertMatchesRegularExpression('/^\d+\.\d+\.\d+$/', (string) $record['version'], 'a real release number, not a range');
-        self::assertArrayNotHasKey('born', $record, 'the SKELETON has no birth record — only a house created from it does');
+
+        // create-project runs the stamp before the user can run this suite. A birth record is
+        // expected there; it must remain valid even after the house customizes its tracked files.
+        if (array_key_exists('born', $record)) {
+            self::assertIsArray($record['born']);
+            self::assertMatchesRegularExpression('/^\d+\.\d+\.\d+$/', $record['born']['version']);
+            self::assertIsString($record['born']['at']);
+            self::assertNotFalse(\DateTimeImmutable::createFromFormat(\DateTimeInterface::ATOM, $record['born']['at']));
+            self::assertIsArray($record['born']['files']);
+            self::assertNotEmpty($record['born']['files']);
+            foreach ($record['born']['files'] as $hash) {
+                self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $hash);
+            }
+        }
 
         $config = json_decode((string) file_get_contents(self::root() . '/.github/release-please-config.json'), true);
         self::assertIsArray($config);
@@ -105,7 +129,11 @@ final class TheHouseRecordsWhichFrameworkItWasBornFromTest extends TestCase
     public function testStampingRecordsTheVersionAndAHashPerFile(): void
     {
         self::stamp();
-        $tree = self::freshTree();
+        $tree = $this->freshTree();
+
+        $skeleton = json_decode((string) file_get_contents($tree . '/.milpa/framework.json'), true);
+        self::assertIsArray($skeleton);
+        self::assertArrayNotHasKey('born', $skeleton, 'the fixture starts as a skeleton, before Composer stamps it');
 
         self::assertSame(0, \FrameworkStamp::main($tree));
 
@@ -119,8 +147,6 @@ final class TheHouseRecordsWhichFrameworkItWasBornFromTest extends TestCase
             'the ORIGINAL bytes, which is the whole point — after today they are gone',
         );
         self::assertArrayNotHasKey('tests/SomethingTest.php', $record['born']['files'], 'the skeleton\'s own tooling is not something a house diverges from');
-
-        self::rm($tree);
     }
 
     /**
@@ -133,7 +159,7 @@ final class TheHouseRecordsWhichFrameworkItWasBornFromTest extends TestCase
     public function testStampingTwiceDoesNotOverwriteTheBirthRecord(): void
     {
         self::stamp();
-        $tree = self::freshTree();
+        $tree = $this->freshTree();
         \FrameworkStamp::main($tree);
 
         file_put_contents($tree . '/public/index.php', "<?php // the app CHANGED this\n");
@@ -146,26 +172,24 @@ final class TheHouseRecordsWhichFrameworkItWasBornFromTest extends TestCase
             $record['born']['files']['public/index.php'],
             'the birth record still holds the ORIGINAL, so the change is still visible as a change',
         );
-
-        self::rm($tree);
     }
 
     /** A tree with no record says so and fails, rather than inventing a version. */
     public function testATreeWithNoRecordRefuses(): void
     {
         self::stamp();
-        $tree = self::freshTree();
+        $tree = $this->freshTree();
         unlink($tree . '/.milpa/framework.json');
 
         self::assertSame(1, \FrameworkStamp::main($tree));
-
-        self::rm($tree);
     }
 
     /** A minimal skeleton-shaped tree. */
-    private static function freshTree(): string
+    private function freshTree(): string
     {
-        $tree = sys_get_temp_dir() . '/milpa-house-' . uniqid('', true);
+        $directory = new TemporaryDirectory();
+        $this->trees[] = $directory;
+        $tree = $directory->path;
         mkdir($tree . '/.milpa', 0o777, true);
         mkdir($tree . '/public', 0o777, true);
         mkdir($tree . '/config', 0o777, true);
@@ -176,24 +200,5 @@ final class TheHouseRecordsWhichFrameworkItWasBornFromTest extends TestCase
         file_put_contents($tree . '/tests/SomethingTest.php', "<?php // the skeleton's own\n");
 
         return $tree;
-    }
-
-    private static function rm(string $dir): void
-    {
-        foreach (glob($dir . '/{,.}*/{,.}*', \GLOB_BRACE) ?: [] as $f) {
-            if (is_file($f)) {
-                unlink($f);
-            }
-        }
-        foreach (glob($dir . '/*') ?: [] as $f) {
-            if (is_file($f)) {
-                unlink($f);
-            } elseif (is_dir($f)) {
-                array_map('unlink', glob($f . '/*') ?: []);
-                rmdir($f);
-            }
-        }
-        @rmdir($dir . '/.milpa');
-        @rmdir($dir);
     }
 }

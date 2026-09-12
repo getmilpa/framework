@@ -56,6 +56,21 @@ jobs:
       - name: Tiny by default — boots, and offers only what it can do
         run: tools/boot-proof.sh
 
+      # The shipped suite also runs in a house: Composer has stamped its birth record and there
+      # is no source repository. A checkout with opt-ins alone missed both regressions in 0.52.0.
+      - name: Tiny suite after create-project, without .git
+        run: |
+          app="$RUNNER_TEMP/milpa-framework-house"
+          php -r '$record = json_decode(file_get_contents(".milpa/framework.json"), true); exit(is_array($record) && !array_key_exists("born", $record) ? 0 : 1);'
+          repository=$(php -r 'echo json_encode(["type" => "path", "url" => getcwd(), "options" => ["symlink" => false, "versions" => ["milpa/framework" => "dev-smoke"]]]);')
+          composer create-project --repository="$repository" --no-interaction --no-progress --remove-vcs \
+            milpa/framework "$app" dev-smoke
+          # A path repository can mirror a worktree's .git file even with --remove-vcs.
+          rm -rf "$app/.git"
+          cd "$app"
+          php -r '$record = json_decode(file_get_contents(".milpa/framework.json"), true); exit(isset($record["born"]) && !file_exists(".git") ? 0 : 1);'
+          vendor/bin/phpunit --fail-on-warning --fail-on-phpunit-warning
+
       # Y LA CARA COMPLETA. Los opt-in se instalan AQUI y no en require-dev: `create-project` instala
       # los dev, asi que ponerlos ahi haria que toda app naciera con los seis puestos — el corte seria
       # invisible justo donde importa.
