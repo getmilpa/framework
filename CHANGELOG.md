@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.52.1](https://github.com/getmilpa/framework/compare/v0.52.0...v0.52.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **tests:** pass smoke checks after create-project ([c39c367](https://github.com/getmilpa/framework/commit/c39c367ba2d7ce43c8674f2d7416a056cb266bdc))
+
 ## [0.52.0](https://github.com/getmilpa/framework/compare/v0.51.1...v0.52.0) (2026-09-11)
 
 
