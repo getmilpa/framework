@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Http;
 
+use App\Tests\Support\TemporaryDirectory;
 use Milpa\AppRuntime\Config\SecretOverlay;
 use PHPUnit\Framework\TestCase;
 
@@ -82,14 +83,29 @@ final class TheSecretReachesTheBrowserAndNotGitTest extends TestCase
      */
     public function testGitIgnoresTheSecretAndStillSeesTheOverlayThatTravels(): void
     {
-        self::assertTrue($this->ignored(SecretOverlay::RUTA), 'a credential in this path would be committed');
-        self::assertFalse($this->ignored('/.milpa/agent.json'), 'and the acta trail is not hidden with it');
+        // create-project removes .git. Ask a disposable repository using the shipped rules, so
+        // neither the checkout's index nor the developer's global ignore rules decide the result.
+        $repository = new TemporaryDirectory();
+        try {
+            copy($this->root . '/.gitignore', $repository->path . '/.gitignore');
+            mkdir($repository->path . '/.milpa');
+            if (is_file($this->root . '/.milpa/.gitignore')) {
+                copy($this->root . '/.milpa/.gitignore', $repository->path . '/.milpa/.gitignore');
+            }
+            exec('git -C ' . escapeshellarg($repository->path) . ' init --quiet --template= 2>&1', $out, $code);
+            self::assertSame(0, $code, implode("\n", $out));
+
+            self::assertTrue($this->ignored($repository->path, SecretOverlay::RUTA), 'a credential in this path would be committed');
+            self::assertFalse($this->ignored($repository->path, '/.milpa/agent.json'), 'and the acta trail is not hidden with it');
+        } finally {
+            $repository->remove();
+        }
     }
 
-    private function ignored(string $path): bool
+    private function ignored(string $repository, string $path): bool
     {
         exec(
-            'git -C ' . escapeshellarg($this->root) . ' check-ignore -q ' . escapeshellarg(ltrim($path, '/')) . ' 2>/dev/null',
+            'git -C ' . escapeshellarg($repository) . ' -c core.excludesFile=/dev/null check-ignore --no-index -q ' . escapeshellarg(ltrim($path, '/')) . ' 2>&1',
             $out,
             $code,
         );

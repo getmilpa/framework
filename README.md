@@ -21,6 +21,14 @@ cd my-app
 php bin/coa
 ```
 
+Run `php bin/coa house:start` for the house's current state and next steps. Enabling a capability
+requires `--sign`, which authorizes that exact call with your key. Preview it with `--dry-run`:
+
+```bash
+php bin/coa capabilities:enable milpa/mcp-server --dry-run
+php bin/coa capabilities:enable milpa/mcp-server --sign
+```
+
 ## What `coa` is
 
 `coa` does not implement any command. It boots the kernel, collects the operations that packages and
@@ -416,7 +424,7 @@ vendor/bin/phpunit
 
 It ends with «OK, but some tests were skipped!» on a fresh app, and that is the expected reading: the
 skipped tests measure opt-in capabilities — the agent, the model gateway, the generators, identity — and
-each skip names the package it waits for. Switch a capability on (`php bin/coa capabilities:enable …`)
+each skip names the package it waits for. Switch a capability on (`php bin/coa capabilities:enable … --sign`)
 and its tests stop skipping. A failure is a different word, and the suite says it.
 
 ## What is opt-in, and why
@@ -447,7 +455,7 @@ config/app.php           the config bag plugins read in boot()
 public/index.php         the HTTP entry point
 src/Http/IdentityChain.php  the principals index.php runs before the handler: Bearer, then passkey session
 src/Http/IdentityWiring.php the registrations boot.php makes: the policy with milpa/auth, the Bearer with milpa/data
-src/Plugins/HelloPlugin  proof of life: one route, one response
+src/Plugins/HelloPlugin  the welcome page and its design asset routes (fonts and files)
 src/Plugins/OperationsHttpPlugin  serves whatever config/http.php names
 src/Operations            this app's own atoms — `agent` and `token:*` live here
 src/Auth                  the API-token store and the verifier behind them
