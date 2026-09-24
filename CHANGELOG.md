@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.52.2](https://github.com/getmilpa/framework/compare/v0.52.1...v0.52.2) (2026-09-24)
+
+
+### Bug Fixes
+
+* **skeleton:** declare the door back from a trial, and require a decision for every provider ([#143](https://github.com/getmilpa/framework/issues/143)) ([3e4619d](https://github.com/getmilpa/framework/commit/3e4619d458627d652dab015aa1570a228907d7f9))
+
 ## [0.52.1](https://github.com/getmilpa/framework/compare/v0.52.0...v0.52.1) (2026-09-12)
 
 
