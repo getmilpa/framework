@@ -208,8 +208,19 @@ final class TheWelcomePageIsComposedTest extends TestCase
     {
         $html = self::page();
 
-        self::assertSame(1, substr_count($html, '<style data-milpa-assets="components">'));
-        self::assertSame(1, substr_count($html, '<script data-milpa-assets="components">'));
+        // THE TAG IS COUNTED BY ITS OPENING, NOT BY ITS BYTES. This asserted the exact string
+        // `<style data-milpa-assets="components">` — with the `>` right after the attribute — and
+        // milpa/live-web 0.30 added `data-milpa-components="brand-mark@1 code-block@1"` before it. The
+        // page kept emitting each tag exactly once; the assertion saw 0 and went red on every app this
+        // skeleton creates and on every pull request to it (greenhouse evidence/0995). A claim about
+        // how many times something is emitted cannot be answered by the formatting of what is emitted.
+        self::assertSame(1, substr_count($html, '<style data-milpa-assets="components"'));
+        self::assertSame(1, substr_count($html, '<script data-milpa-assets="components"'));
+
+        // And WHICH components it emitted for, so a bare opening from somewhere else cannot satisfy
+        // the count: the two this page composes, and only once each.
+        preg_match('/<style data-milpa-assets="components"[^>]*data-milpa-components="([^"]*)"/', $html, $declared);
+        self::assertSame(['brand-mark@1', 'code-block@1'], explode(' ', $declared[1] ?? ''), 'the page names the components it emitted for');
     }
 
     /**
