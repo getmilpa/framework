@@ -1110,11 +1110,19 @@ final class AgentOperationTest extends TestCase
         self::assertNotNull($sesion);
         self::assertTrue($sesion->isRunnable(), 'se puede seguir');
         self::assertNull($sesion->endedBecause, 'y no terminó');
-        self::assertStringContainsString(
-            'interrumpió',
-            (string) ($sesion->turns[\count($sesion->turns) - 1]['content'] ?? ''),
-            'el stream lo recuerda',
-        );
+        // THE STREAM REMEMBERS IT AS A FACT, not as a line in the model's mouth (greenhouse
+        // decisions/0466): an interruption is how the run ended, so it is `session.run_terminated`
+        // with its reason, and no assistant turn claims the model said it.
+        $terminal = array_values(array_filter(
+            $almacen->stream('interrumpida'),
+            static fn ($event): bool => $event->type === 'session.run_terminated',
+        ));
+        self::assertCount(1, $terminal, 'the stream remembers it');
+        self::assertSame('interrupted', $terminal[0]->payload['reason'] ?? null);
+        self::assertSame([], array_values(array_filter(
+            $sesion->turns,
+            static fn (array $turn): bool => $turn['role'] === 'assistant',
+        )), 'and nobody put it in the model\'s mouth');
     }
 
     /**
