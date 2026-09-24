@@ -87,6 +87,13 @@ return [
     // a component-declaring plugin gains its rows without touching this list.
     Milpa\AppRuntime\Operations\ComponentOperations::class,
     Milpa\AppRuntime\Operations\SequenceOperations::class,
+    // THE ONLY DOOR BACK FROM A TRIAL (greenhouse decisions/0069, 0995). When a governed session
+    // stages work — `make` runs in a trial workspace and answers «apply it with `sandbox:promote`» —
+    // this provider is what offers that operation. Without it the scaffolder names a command this app
+    // does not have, and an agent that did everything right stops on a debt it cannot pay: measured
+    // three times (decisions/0227, 0331, evidence/0994), each time patched in a lab mount and never
+    // here. In an app without milpa/agent it still boots and `sandbox:list` answers «no trials».
+    Milpa\AppRuntime\Operations\TrialOperations::class,
     // A recipe ORIGINATES governed work (greenhouse decisions/0180, 0216): `recipe:apply` reads
     // recipes/<name>.json and drives its foundation, its capabilities and its scaffolds through the
     // same gate every operation passes. The skeleton ships one recipe (recipes/notes.json).
