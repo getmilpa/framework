@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.52.3](https://github.com/getmilpa/framework/compare/v0.52.2...v0.52.3) (2026-09-25)
+
+
+### Miscellaneous Chores
+
+* ship the interruption test that matches app-runtime 0.183.1 ([#146](https://github.com/getmilpa/framework/issues/146)) ([d143bbf](https://github.com/getmilpa/framework/commit/d143bbf00f764bafc798f53f8d1023d39ccd237f))
+
 ## [0.52.2](https://github.com/getmilpa/framework/compare/v0.52.1...v0.52.2) (2026-09-24)
 
 
