@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.53.0](https://github.com/getmilpa/framework/compare/v0.52.3...v0.53.0) (2026-09-28)
+
+
+### Features
+
+* **public:** an opt-in FrankenPHP worker that leaves when its kernel went stale ([#148](https://github.com/getmilpa/framework/issues/148)) ([5ebff40](https://github.com/getmilpa/framework/commit/5ebff40a4aa613871097ee3a27ae109ea4541f13))
+
 ## [0.52.3](https://github.com/getmilpa/framework/compare/v0.52.2...v0.52.3) (2026-09-25)
 
 
