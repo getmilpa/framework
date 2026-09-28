@@ -34,10 +34,13 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
 
     private ?string $previous = null;
 
+    private string $config = '';
+
     protected function setUp(): void
     {
         $this->root = \dirname(__DIR__, 2);
         $this->secrets = $this->root . SecretOverlay::RUTA;
+        $this->config = (string) file_get_contents($this->root . '/config/app.php');
         if (is_file($this->secrets)) {
             $this->previous = (string) file_get_contents($this->secrets);
             unlink($this->secrets);
@@ -46,6 +49,7 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
 
     protected function tearDown(): void
     {
+        file_put_contents($this->root . '/config/app.php', $this->config);
         if ($this->previous !== null) {
             file_put_contents($this->secrets, $this->previous);
         } elseif (is_file($this->secrets)) {
@@ -80,6 +84,25 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
         self::assertStringContainsString('.milpa/secrets.json changed since this kernel booted', $run['log']);
     }
 
+    /**
+     * A worker that has served NOTHING yet when a file its boot included changes still knows it is stale.
+     *
+     * Measured in evidence/1038 (m3b): idle workers took the promoted `config/plugins.php` as what they had
+     * read and answered 404 for the promoted plugin, with no 307. The change here is to `config/app.php`,
+     * which the boot includes — not an overlay, which is fingerprinted before the boot.
+     */
+    public function testAnIdleWorkerKnowsTheBootsFilesChanged(): void
+    {
+        if (!class_exists(KernelDefinition::class)) {
+            self::markTestSkipped('milpa/app-runtime without KernelDefinition: the worker boots per request (see the fallback test).');
+        }
+        $run = $this->worker(['edit-config-before', 'steady']);
+
+        self::assertSame([307], array_column($run['served'], 'status'), $run['log']);
+        self::assertSame(1, $run['calls']);
+        self::assertStringContainsString('config/app.php changed since this kernel booted', $run['log']);
+    }
+
     /** This request changed the definition (installed, promoted, wrote config): it is served, and the worker leaves after it. */
     public function testAChangeMadeByTheRequestItServedEndsTheWorkerAfterIt(): void
     {
@@ -108,7 +131,8 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
      * Run public/worker.php with a stub loop that plays `$plan`, one entry per request.
      *
      * `change-before` writes the secret overlay before the request arrives (another process did it);
-     * `change-during` writes it while the response is being emitted (this request did it).
+     * `change-during` writes it while the response is being emitted (this request did it);
+     * `edit-config-before` edits `config/app.php`, a file the boot INCLUDED, before the request arrives.
      *
      * @param list<string> $plan
      *
@@ -133,6 +157,9 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
                 }
                 if ($step === 'change-before') {
                     file_put_contents($secrets, '{}');
+                }
+                if ($step === 'edit-config-before') {
+                    file_put_contents(getenv('WORKER_ROOT') . '/config/app.php', "\n// edited while the worker sat idle\n", FILE_APPEND);
                 }
                 $_SERVER['REQUEST_URI'] = '/';
                 $_SERVER['REQUEST_METHOD'] = 'GET';

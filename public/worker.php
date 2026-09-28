@@ -94,6 +94,11 @@ $boot = static function () use ($root): array {
 // Fingerprint BEFORE booting: a write that lands while the kernel boots reads as a change.
 $definition = $knowsItsDefinition ? KernelDefinition::before($root) : null;
 $booted = $knowsItsDefinition ? $boot() : null;
+// And take in what the boot INCLUDED now, not at the first request: a worker that sits idle while a
+// promotion rewrites `config/plugins.php` would otherwise record the new content as what it read, and
+// answer 404 for the promoted plugin without knowing it is stale (greenhouse evidence/1038, m3b). A
+// change caught here is answered at the first request — a worker must reach its loop before it leaves.
+$definition?->takeInIncluded();
 $stale = null;
 
 $handle = static function () use (&$booted, &$stale, $boot, $definition): void {
