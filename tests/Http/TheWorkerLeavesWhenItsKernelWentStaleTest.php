@@ -115,6 +115,40 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
         self::assertSame(2, $run['calls'], 'no request after the one that changed the house');
     }
 
+    /**
+     * Another process broke the boot: the worker does NOT leave for a house that does not boot (decisions/0506).
+     *
+     * Measured in evidence/1038 (n5): workers that left for a boot-breaking promotion were replaced by
+     * workers that died at boot, in a loop, and requests waited with no answer. Here the stale worker asks a
+     * child process to boot the house as it is now, hears «does not boot», and keeps serving — old, but
+     * alive — saying why once in the log. When the house boots again, it sends the next request back and leaves.
+     */
+    public function testAWorkerDoesNotLeaveForAHouseThatDoesNotBoot(): void
+    {
+        if (!method_exists(KernelDefinition::class, 'nextBootFails')) {
+            self::markTestSkipped('milpa/app-runtime without nextBootFails (0.197): the worker leaves as 0505 had it.');
+        }
+        $run = $this->worker(['steady', 'break-before', 'steady', 'steady', 'fix-before', 'steady']);
+
+        self::assertSame([200, 200, 200, 200, 307], array_column($run['served'], 'status'), $run['log']);
+        self::assertSame(5, $run['calls'], 'held through the break; gone after the house booted again');
+        self::assertSame(1, substr_count($run['log'], 'the house does not boot with it'), 'said once, not once per request: ' . $run['log']);
+        self::assertStringContainsString('RuntimeException: broken by the test', $run['log']);
+    }
+
+    /** The request that broke the boot is served, and the worker stays after it instead of leaving into a crash loop. */
+    public function testARequestThatBreaksTheBootDoesNotEndTheWorker(): void
+    {
+        if (!method_exists(KernelDefinition::class, 'nextBootFails')) {
+            self::markTestSkipped('milpa/app-runtime without nextBootFails (0.197): the worker leaves as 0505 had it.');
+        }
+        $run = $this->worker(['steady', 'break-during', 'steady']);
+
+        self::assertSame([200, 200, 200], array_column($run['served'], 'status'), $run['log']);
+        self::assertSame(4, $run['calls'], 'the worker asked for every request, and once more when the plan ended');
+        self::assertStringContainsString('the house does not boot with it', $run['log']);
+    }
+
     /** Without a runtime that knows its definition, the worker boots per request: slower, never stale. */
     public function testWithoutKernelDefinitionTheWorkerBootsPerRequest(): void
     {
@@ -132,7 +166,8 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
      *
      * `change-before` writes the secret overlay before the request arrives (another process did it);
      * `change-during` writes it while the response is being emitted (this request did it);
-     * `edit-config-before` edits `config/app.php`, a file the boot INCLUDED, before the request arrives.
+     * `edit-config-before` edits `config/app.php`, a file the boot INCLUDED, before the request arrives;
+     * `break-before` / `break-during` make `config/app.php` throw (the house no longer boots), `fix-before` undoes it.
      *
      * @param list<string> $plan
      *
@@ -158,6 +193,16 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
                 if ($step === 'change-before') {
                     file_put_contents($secrets, '{}');
                 }
+                $config = getenv('WORKER_ROOT') . '/config/app.php';
+                $break = static function () use ($config): void {
+                    file_put_contents($config, preg_replace('/^return \[/m', "throw new \\RuntimeException('broken by the test');\nreturn [", (string) file_get_contents($config), 1));
+                };
+                if ($step === 'break-before') {
+                    $break();
+                }
+                if ($step === 'fix-before') {
+                    file_put_contents($config, str_replace("throw new \\RuntimeException('broken by the test');\n", '', (string) file_get_contents($config)));
+                }
                 if ($step === 'edit-config-before') {
                     file_put_contents(getenv('WORKER_ROOT') . '/config/app.php', "\n// edited while the worker sat idle\n", FILE_APPEND);
                 }
@@ -165,9 +210,12 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
                 $_SERVER['REQUEST_METHOD'] = 'GET';
                 $_SERVER['HTTP_HOST'] = 'localhost';
                 http_response_code(200);
-                ob_start(static function (string $out) use ($step, $secrets): string {
+                ob_start(static function (string $out) use ($step, $secrets, $break, $config): string {
                     if ($step === 'change-during' && !is_file($secrets)) {
                         file_put_contents($secrets, '{}');
+                    }
+                    if ($step === 'break-during' && !str_contains((string) file_get_contents($config), 'broken by the test')) {
+                        $break();
                     }
 
                     return '';

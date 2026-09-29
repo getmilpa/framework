@@ -30,6 +30,13 @@ declare(strict_types=1);
 // It never re-boots in place: PHP does not redefine a loaded class, and Composer's autoloader in memory
 // still holds the maps from before an install. Only a new process is a new kernel.
 //
+// And it never leaves for a house that does not boot (greenhouse decisions/0506). A promotion that broke
+// the boot sent every worker out of its loop and its replacements died at boot in a loop — requests
+// waited with no answer (evidence/1038, n5). So before leaving, a stale worker asks a child process to
+// boot the house as it is now (`KernelDefinition::nextBootFails()`). If it does not boot, the worker
+// STAYS: it keeps serving with the kernel it has — old, but alive — says why on every response
+// (`Milpa-Kernel-Held`) and once in the log, and leaves as soon as the house boots again (an undo, a fix).
+//
 // To serve with it (the `php_server` index is what makes the mode REAL — without it requests run
 // classic on the spare threads; the proof is `frankenphp_worker_request_count` growing):
 //
@@ -100,15 +107,35 @@ $booted = $knowsItsDefinition ? $boot() : null;
 // change caught here is answered at the first request — a worker must reach its loop before it leaves.
 $definition?->takeInIncluded();
 $stale = null;
+$held = null;
 
-$handle = static function () use (&$booted, &$stale, $boot, $definition): void {
+// Whether the stale worker may leave: only for a house that boots. Otherwise it is HELD — it stays, says
+// why once in the log (and again only when the reason changes), and keeps serving.
+// A runtime older than 0.197 cannot ask (no `nextBootFails()`): the worker leaves as 0505 had it.
+$mayLeave = static function (string $changed) use (&$held, $definition): bool {
+    $broken = $definition !== null && method_exists($definition, 'nextBootFails') ? $definition->nextBootFails() : null;
+    if ($broken === null) {
+        return true;
+    }
+    if ($held !== $broken) {
+        error_log('[milpa] public/worker.php: ' . $changed . ' changed, and the house does not boot with it (' . $broken . '); serving with the kernel this worker has until it does.');
+    }
+    $held = $broken;
+
+    return false;
+};
+
+$handle = static function () use (&$booted, &$stale, &$held, $boot, $definition, $mayLeave): void {
     [$kernel, $psr17, $handler, $failures] = $booted ?? $boot();
     $request = (new ServerRequestCreator($psr17, $psr17, $psr17, $psr17))->fromGlobals();
 
     if ($definition !== null && ($stale = $definition->staleBecause()) !== null) {
-        (new ResponseEmitter())->emit($definition::retryHere($request, $psr17));
+        if ($mayLeave($stale)) {
+            (new ResponseEmitter())->emit($definition::retryHere($request, $psr17));
 
-        return;
+            return;
+        }
+        $stale = null;
     }
 
     $response = $failures->process($request, new class ($kernel, $handler) implements \Psr\Http\Server\RequestHandlerInterface {
@@ -121,9 +148,15 @@ $handle = static function () use (&$booted, &$stale, $boot, $definition): void {
             return IdentityChain::fromContainer($this->kernel->container())->handle($request, $this->handler);
         }
     });
+    if ($held !== null) {
+        $response = $response->withHeader('Milpa-Kernel-Held', (string) preg_replace('/[^\x20-\x7E]/', '?', $held));
+    }
     (new ResponseEmitter())->emit($response);
 
     $stale = $definition?->staleBecause();
+    if ($stale !== null && !$mayLeave($stale)) {
+        $stale = null;
+    }
 };
 
 do {
