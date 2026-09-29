@@ -20,8 +20,15 @@ require __DIR__ . '/../vendor/autoload.php';
 // exactly like config/boot.php below, which is loaded relative to the same root.
 $root = \dirname(__DIR__);
 
-/** @var array{container: \Milpa\Interfaces\Di\DIContainerInterface, plugins: list<class-string>} $boot */
-$boot = require $root . '/config/boot.php';
+// A BOOT THAT FAILS IS A 503, NEVER A 200 (greenhouse decisions/0512). Measured on fresh cattle (evidence/1035
+// F1, evidence/1039): when the house did not boot — a plugin whose `boot()` threw, a class missing an interface
+// method — `php -S` and FrankenPHP classic answered HTTP 200 with `Fatal error: … in /home/…` in the body. The
+// boot below runs before `ExceptionMiddleware` exists, and a compile fatal is caught by nobody. So from here to
+// the kernel being in its container, errors are not displayed and output is held; a boot that dies answers
+// `503` and `Milpa-House-Does-Not-Boot` — what the FrankenPHP worker answers (0506). WHY it did not boot (the
+// one-line reason, never an absolute path) is said only when `app.debug` is on; otherwise one generic line (Rod,
+// 2026-09-29). PHP's own log always gets the whole fatal. A runtime older than 0.198 has no watch.
+$watch = class_exists(\Milpa\AppRuntime\Support\BrokenBootAnswer::class) ? \Milpa\AppRuntime\Support\BrokenBootAnswer::watch($root) : null;
 
 /** @var array<string, mixed> $config */
 $config = require $root . '/config/app.php';
@@ -38,6 +45,15 @@ if (class_exists(\Milpa\AppRuntime\Config\MachineOverlay::class)) {
 if (class_exists(\Milpa\AppRuntime\Config\SecretOverlay::class)) {
     $config = \Milpa\AppRuntime\Config\SecretOverlay::sobre($config, $root);
 }
+
+// The configuration is read BEFORE `config/boot.php`, so the watch knows `app.debug` before anything that can fail
+// at boot runs — a plugin class that does not compile is loaded there. A configuration that itself fails to load
+// answers the generic 503: an unread `debug` is never read as «on».
+$watch?->showReasons((bool) ($config['app']['debug'] ?? false));
+
+/** @var array{container: \Milpa\Interfaces\Di\DIContainerInterface, plugins: list<class-string>} $boot */
+$boot = require $root . '/config/boot.php';
+
 
 // THE APP'S LOG, which is what makes the 500 page below tell the truth. `ErrorLogLogger` writes
 // through PHP's own `error_log()` — the destination this deployment already configured, whatever it
@@ -65,6 +81,9 @@ $kernel = Kernel::boot([
 // «nowhere to store sessions» over the web while working from the terminal, and that reads as a
 // broken app instead of as a missing line in this file.
 $boot['container']->registerService(Kernel::class, $kernel);
+
+// Booted: from here a failure is a request's, and `ExceptionMiddleware` answers it with a 500.
+$watch?->booted();
 
 $psr17 = new Psr17Factory();
 $request = (new ServerRequestCreator($psr17, $psr17, $psr17, $psr17))->fromGlobals();

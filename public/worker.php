@@ -35,9 +35,9 @@ declare(strict_types=1);
 // waited with no answer (evidence/1038, n5). So before leaving, a stale worker asks a child process to
 // boot the house as it is now (`KernelDefinition::nextBootFails()`). If it does not boot, the worker
 // STAYS — but it does not serve with the kernel it has: Rod decided (2026-09-28) that a long-lived server
-// STOPS HONESTLY and says why. Every request is answered `503` with the reason
-// (`KernelDefinition::houseDoesNotBoot()`), the log says it once, and the worker leaves as soon as the
-// house boots again (an undo, a fix).
+// STOPS HONESTLY. Every request is answered `503` (`KernelDefinition::houseDoesNotBoot()`) — with the reason
+// when `app.debug` is on, one generic line otherwise (decisions/0512) —, the log says why once, and the worker
+// leaves as soon as the house boots again (an undo, a fix).
 //
 // To serve with it (the `php_server` index is what makes the mode REAL — without it requests run
 // classic on the spare threads; the proof is `frankenphp_worker_request_count` growing):
@@ -75,7 +75,8 @@ if (!$knowsItsDefinition) {
 }
 
 // The same boot as `public/index.php` — read that file for why each line is there.
-$boot = static function () use ($root): array {
+$debug = false; // the house's `app.debug`, once a boot read it: whether a 503 says WHY (decisions/0512, Rod 2026-09-29)
+$boot = static function () use ($root, &$debug): array {
     /** @var array{container: \Milpa\Interfaces\Di\DIContainerInterface, plugins: list<class-string>} $boot */
     $boot = require $root . '/config/boot.php';
     /** @var array<string, mixed> $config */
@@ -86,6 +87,7 @@ $boot = static function () use ($root): array {
     if (class_exists(\Milpa\AppRuntime\Config\SecretOverlay::class)) {
         $config = \Milpa\AppRuntime\Config\SecretOverlay::sobre($config, $root);
     }
+    $debug = (bool) ($config['app']['debug'] ?? false);
     $logger = new ErrorLogLogger();
     $kernel = Kernel::boot([
         'root' => $root,
@@ -128,7 +130,7 @@ $mayLeave = static function (string $changed) use (&$broken, $definition): bool 
     return false;
 };
 
-$handle = static function () use (&$booted, &$stale, &$broken, $boot, $definition, $mayLeave): void {
+$handle = static function () use (&$booted, &$stale, &$broken, &$debug, $boot, $definition, $mayLeave): void {
     [$kernel, $psr17, $handler, $failures] = $booted ?? $boot();
     $request = (new ServerRequestCreator($psr17, $psr17, $psr17, $psr17))->fromGlobals();
 
@@ -136,7 +138,7 @@ $handle = static function () use (&$booted, &$stale, &$broken, $boot, $definitio
         $leave = $mayLeave($stale);
         (new ResponseEmitter())->emit($leave || $broken === null
             ? $definition::retryHere($request, $psr17)
-            : $definition::houseDoesNotBoot($broken, $psr17));
+            : $definition::houseDoesNotBoot($broken, $psr17, $debug));
         if (!$leave) {
             $stale = null;
         }
