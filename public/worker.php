@@ -30,6 +30,15 @@ declare(strict_types=1);
 // It never re-boots in place: PHP does not redefine a loaded class, and Composer's autoloader in memory
 // still holds the maps from before an install. Only a new process is a new kernel.
 //
+// And it never leaves for a house that does not boot (greenhouse decisions/0506). A promotion that broke
+// the boot sent every worker out of its loop and its replacements died at boot in a loop — requests
+// waited with no answer (evidence/1038, n5). So before leaving, a stale worker asks a child process to
+// boot the house as it is now (`KernelDefinition::nextBootFails()`). If it does not boot, the worker
+// STAYS — but it does not serve with the kernel it has: Rod decided (2026-09-28) that a long-lived server
+// STOPS HONESTLY and says why. Every request is answered `503` with the reason
+// (`KernelDefinition::houseDoesNotBoot()`), the log says it once, and the worker leaves as soon as the
+// house boots again (an undo, a fix).
+//
 // To serve with it (the `php_server` index is what makes the mode REAL — without it requests run
 // classic on the spare threads; the proof is `frankenphp_worker_request_count` growing):
 //
@@ -100,13 +109,37 @@ $booted = $knowsItsDefinition ? $boot() : null;
 // change caught here is answered at the first request — a worker must reach its loop before it leaves.
 $definition?->takeInIncluded();
 $stale = null;
+$broken = null;
 
-$handle = static function () use (&$booted, &$stale, $boot, $definition): void {
+// Whether the stale worker may leave: only for a house that boots. Otherwise the house is BROKEN for this
+// worker: it stays alive (a replacement would die at boot), says why once in the log (and again only when
+// the reason changes), and answers every request with the refusal — never with the old kernel.
+// A runtime older than 0.197 cannot ask (no `nextBootFails()`): the worker leaves as 0505 had it.
+$mayLeave = static function (string $changed) use (&$broken, $definition): bool {
+    $why = $definition !== null && method_exists($definition, 'nextBootFails') ? $definition->nextBootFails() : null;
+    if ($why === null) {
+        return true;
+    }
+    if ($broken !== $why) {
+        error_log('[milpa] public/worker.php: ' . $changed . ' changed, and the house does not boot with it (' . $why . '); answering 503 until it does.');
+    }
+    $broken = $why;
+
+    return false;
+};
+
+$handle = static function () use (&$booted, &$stale, &$broken, $boot, $definition, $mayLeave): void {
     [$kernel, $psr17, $handler, $failures] = $booted ?? $boot();
     $request = (new ServerRequestCreator($psr17, $psr17, $psr17, $psr17))->fromGlobals();
 
     if ($definition !== null && ($stale = $definition->staleBecause()) !== null) {
-        (new ResponseEmitter())->emit($definition::retryHere($request, $psr17));
+        $leave = $mayLeave($stale);
+        (new ResponseEmitter())->emit($leave || $broken === null
+            ? $definition::retryHere($request, $psr17)
+            : $definition::houseDoesNotBoot($broken, $psr17));
+        if (!$leave) {
+            $stale = null;
+        }
 
         return;
     }
@@ -124,6 +157,9 @@ $handle = static function () use (&$booted, &$stale, $boot, $definition): void {
     (new ResponseEmitter())->emit($response);
 
     $stale = $definition?->staleBecause();
+    if ($stale !== null && !$mayLeave($stale)) {
+        $stale = null;
+    }
 };
 
 do {
