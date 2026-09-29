@@ -135,6 +135,23 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
         self::assertSame(5, $run['calls'], 'alive through the break; gone after the house booted again');
         self::assertSame(1, substr_count($run['log'], 'the house does not boot with it'), 'said once, not once per request: ' . $run['log']);
         self::assertStringContainsString('RuntimeException: broken by the test', $run['log']);
+        // Not in app.debug (the skeleton's default): the 503 is generic — the reason is in the log, not in the page (0512).
+        self::assertSame("This house does not boot; it answers again as soon as it does.\n", $run['served'][1]['body']);
+    }
+
+    /** In `app.debug`, the worker's 503 says why (Rod, 2026-09-29, accepting decisions/0512). */
+    public function testInDebugTheWorkersRefusalSaysWhy(): void
+    {
+        if (!\defined(KernelDefinition::class . '::HIDDEN_REASON')) {
+            self::markTestSkipped('milpa/app-runtime without HIDDEN_REASON (before 0512): the refusal always says why.');
+        }
+        file_put_contents($this->root . '/config/app.php', str_replace("'debug' => false", "'debug' => true", $this->config));
+
+        $run = $this->worker(['steady', 'break-before', 'steady', 'fix-before', 'steady']);
+
+        self::assertSame([200, 503, 503, 307], array_column($run['served'], 'status'), $run['log']);
+        self::assertStringStartsWith('This house does not boot: RuntimeException: broken by the test', $run['served'][1]['body']);
+        self::assertStringNotContainsString($this->root, $run['served'][1]['body']);
     }
 
     /** The request that broke the boot was already served; the ones after it are refused, and the worker does not leave into a crash loop. */
@@ -172,7 +189,7 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
      *
      * @param list<string> $plan
      *
-     * @return array{served: list<array{status: int|bool}>, calls: int, log: string}
+     * @return array{served: list<array{status: int|bool, body: string}>, calls: int, log: string}
      */
     private function worker(array $plan): array
     {
@@ -211,7 +228,9 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
                 $_SERVER['REQUEST_METHOD'] = 'GET';
                 $_SERVER['HTTP_HOST'] = 'localhost';
                 http_response_code(200);
-                ob_start(static function (string $out) use ($step, $secrets, $break, $config): string {
+                $body = '';
+                ob_start(static function (string $out) use ($step, $secrets, $break, $config, &$body): string {
+                    $body .= $out;
                     if ($step === 'change-during' && !is_file($secrets)) {
                         file_put_contents($secrets, '{}');
                     }
@@ -223,7 +242,7 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
                 }, 1); // chunk size 1: the callback runs as the response is emitted, INSIDE the request
                 $handler();
                 ob_end_clean();
-                fwrite(STDOUT, '@@served ' . json_encode(['status' => http_response_code()]) . "\n");
+                fwrite(STDOUT, '@@served ' . json_encode(['status' => http_response_code(), 'body' => substr($body, 0, 400)]) . "\n");
 
                 return true;
             }
@@ -245,7 +264,7 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
         $served = [];
         foreach ($out as $line) {
             if (str_starts_with($line, '@@served ')) {
-                /** @var array{status: int|bool} $row */
+                /** @var array{status: int|bool, body: string} $row */
                 $row = json_decode(substr($line, 9), true);
                 $served[] = $row;
             }

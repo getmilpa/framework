@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace App\Tests\Http;
 
 use Milpa\AppRuntime\Support\BrokenBootAnswer;
+use Milpa\AppRuntime\Support\KernelDefinition;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -22,12 +23,13 @@ use PHPUnit\Framework\TestCase;
  *
  * Measured on fresh cattle (greenhouse evidence/1035 F1, evidence/1039): `php -S` and FrankenPHP classic answered
  * a house that did not boot with HTTP 200 and `Fatal error: … in /home/…` in the body. Here THIS skeleton's front
- * controller runs under a real `php -S` (the router `coa serve` uses), in a copy of the skeleton whose
- * `config/app.php` is broken two ways: it throws, and it declares a class missing an interface method (a compile
- * fatal nobody can catch). The positive control is the same copy with the watch's two lines taken out.
+ * controller runs under a real `php -S` (the router `coa serve` uses), in a copy of the skeleton whose boot is
+ * broken two ways: it throws, and it declares a class missing an interface method (a compile fatal nobody can
+ * catch). The reason is shown only in `app.debug` (Rod, 2026-09-29); a configuration that does not load answers
+ * generic. The positive control is the same copy with the watch's two lines taken out.
  *
- * @guards a boot that throws or dies of a compile fatal answers 503 with `Milpa-House-Does-Not-Boot`, the reason
- *         and no absolute path; the house that boots is served 200 as before
+ * @guards a boot that throws or dies of a compile fatal answers 503 with `Milpa-House-Does-Not-Boot`; the reason
+ *         only in `app.debug`, never an absolute path; the house that boots is served 200 as before
  *
  * @refuses nothing — the unwatched front controller is the control, and it answers 200 with the fatal
  */
@@ -37,8 +39,8 @@ final class ABrokenBootIsA503AndNeverA200Test extends TestCase
 
     protected function setUp(): void
     {
-        if (!class_exists(BrokenBootAnswer::class)) {
-            self::markTestSkipped('milpa/app-runtime has no BrokenBootAnswer (it needs 0.198 or later)');
+        if (!class_exists(BrokenBootAnswer::class) || !method_exists(BrokenBootAnswer::class, 'showReasons')) {
+            self::markTestSkipped('milpa/app-runtime has no BrokenBootAnswer::showReasons() (it needs 0.198 or later)');
         }
         $root = \dirname(__DIR__, 2);
         $this->copy = sys_get_temp_dir() . '/milpa-fw-broken-boot-' . bin2hex(random_bytes(4));
@@ -57,28 +59,46 @@ final class ABrokenBootIsA503AndNeverA200Test extends TestCase
         }
     }
 
-    public function testABootThatFailsIsA503WithTheReasonAndNoPath(): void
+    public function testABootThatFailsIsA503AndSaysWhyOnlyInDebug(): void
     {
         $app = (string) file_get_contents($this->copy . '/config/app.php');
+        $boot = (string) file_get_contents($this->copy . '/config/boot.php');
+        $debug = static fn (bool $on): string => str_replace("'debug' => false", "'debug' => " . ($on ? 'true' : 'false'), $app);
+        $generic = "This house does not boot; it answers again as soon as it does.\n";
         [$server, $port] = $this->serve();
         try {
             self::assertSame(200, $this->get($port)[0], 'the house that boots is served');
 
-            file_put_contents($this->copy . '/config/app.php', "<?php\nthrow new \\RuntimeException('broken on purpose');\n");
+            // The boot throws AFTER the configuration was read (config/boot.php, where the plugins load).
+            file_put_contents($this->copy . '/config/boot.php', "<?php\nthrow new \\RuntimeException('broken on purpose');\n");
+            [$status, $body, $headers] = $this->get($port);
+            self::assertSame(503, $status, $body);
+            self::assertSame(KernelDefinition::HIDDEN_REASON, $headers['milpa-house-does-not-boot'] ?? null, 'not in debug: no reason');
+            self::assertSame($generic, $body);
+
+            file_put_contents($this->copy . '/config/app.php', $debug(true));
             [$status, $body, $headers] = $this->get($port);
             self::assertSame(503, $status, $body);
             self::assertSame('RuntimeException: broken on purpose', $headers['milpa-house-does-not-boot'] ?? null);
             self::assertStringStartsWith('This house does not boot: RuntimeException: broken on purpose', $body);
             self::assertStringNotContainsString($this->copy, $body);
 
-            file_put_contents($this->copy . '/config/app.php', "<?php\nfinal class BrokenOnPurpose implements \\Countable {}\nreturn [];\n");
+            // A compile fatal nobody can catch, in debug.
+            file_put_contents($this->copy . '/config/boot.php', "<?php\nfinal class BrokenOnPurpose implements \\Countable {}\nreturn [];\n");
             [$status, $body, $headers] = $this->get($port);
             self::assertSame(503, $status, $body);
             self::assertStringStartsWith('Fatal error: Class BrokenOnPurpose contains 1 abstract method', $headers['milpa-house-does-not-boot'] ?? '');
-            self::assertStringContainsString('in config/app.php on line 2', $body);
+            self::assertStringContainsString('in config/boot.php on line 2', $body);
             self::assertStringNotContainsString($this->copy, $body);
 
+            // A configuration that itself does not load: its `debug` was never read, and is not read as «on».
+            file_put_contents($this->copy . '/config/app.php', "<?php\nthrow new \\RuntimeException('config broken');\n");
+            [$status, $body, $headers] = $this->get($port);
+            self::assertSame(503, $status, $body);
+            self::assertSame($generic, $body);
+
             // POSITIVE CONTROL: the same front controller without the watch is the defect of 1035 F1.
+            file_put_contents($this->copy . '/config/app.php', $debug(false));
             $index = (string) file_get_contents($this->copy . '/public/index.php');
             $bare = str_replace(['$watch?->booted();', '$watch = class_exists('], ['', '$watch = null && class_exists('], $index);
             self::assertNotSame($index, $bare);
@@ -89,7 +109,7 @@ final class ABrokenBootIsA503AndNeverA200Test extends TestCase
             self::assertStringContainsString($this->copy, $body, 'and the page carries the house\'s path');
 
             file_put_contents($this->copy . '/public/index.php', $index);
-            file_put_contents($this->copy . '/config/app.php', $app);
+            file_put_contents($this->copy . '/config/boot.php', $boot);
             self::assertSame(200, $this->get($port)[0], 'fixed, it serves again');
         } finally {
             proc_terminate($server);
