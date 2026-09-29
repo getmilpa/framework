@@ -110,19 +110,28 @@ final class ApplicationTest extends TestCase
     }
 
     /**
-     * Lo que no se puede deshacer NO corre sin firma, y no escribe nada al negarse.
+     * A lasting change does not run unsigned — reversible or not — and writes nothing when refused.
      *
-     * Es la garantía que distingue a este runtime de otro agente de terminal, y por eso se comprueba
-     * con la operación real y no con una declaración: que el átomo diga `requiresConfirmation` sólo
-     * sirve si algo lo honra.
+     * This used to assert the opposite: `plugins:disable` ran without a signature because it can be undone. An
+     * unsigned call proves nobody, and on the terminal it ran as `local-shell` with every scope; that is where a
+     * resident's work fell when its seat's receipt was released (greenhouse evidence/1050). Now an unsigned call
+     * changes nothing that lasts (greenhouse decisions/0522): it asks for `--sign`, and the plugin stays enabled.
      */
-    public function testWhatIsReversibleRunsWithoutASignature(): void
+    public function testAnUnsignedLastingChangeIsRefusedAndWritesNothing(): void
     {
-        self::assertSame(0, $this->coa('plugins:disable HelloPlugin')['codigo'], 'deshabilitar es reversible');
-        self::assertFalse($this->habilitado('HelloPlugin'), 'y de verdad lo deshabilitó');
+        $r = $this->coa('plugins:disable HelloPlugin');
 
-        $this->coa('plugins:enable HelloPlugin');
-        self::assertTrue($this->habilitado('HelloPlugin'));
+        try {
+            self::assertSame(1, $r['codigo'], $r['texto']);
+            self::assertStringContainsString('an unsigned call changes nothing that lasts', $r['texto']);
+            self::assertStringContainsString('Sign it with --sign', $r['texto']);
+            self::assertTrue($this->habilitado('HelloPlugin'), 'nothing was disabled');
+        } finally {
+            // A runtime that still lets it through must not leave the plugin off for every test after this one.
+            if (!$this->habilitado('HelloPlugin')) {
+                $this->coa('plugins:enable HelloPlugin');
+            }
+        }
     }
 
     /**
