@@ -261,7 +261,7 @@ final class AgentOperationTest extends TestCase
         $r = $handler(['prompt' => 'algo']);
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('herramienta', (string) $r['error']);
+        self::assertStringContainsString('exposed no operation as a tool', (string) $r['error']);
     }
 
     /**
@@ -668,7 +668,7 @@ final class AgentOperationTest extends TestCase
         $r = $this->llamar($agente, ['prompt' => 'sigue', 'session' => 's1']);
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('esperando una respuesta', (string) $r['error']);
+        self::assertStringContainsString('is waiting for an answer', (string) $r['error']);
         self::assertStringContainsString('sqlite o mysql', (string) $r['error'], 'dice QUÉ se le preguntó');
     }
 
@@ -685,7 +685,7 @@ final class AgentOperationTest extends TestCase
         $r = $this->llamar($agente, ['prompt' => 'otra cosa', 'session' => 's1']);
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('ya terminó', (string) $r['error']);
+        self::assertStringContainsString('already ended', (string) $r['error']);
         self::assertStringContainsString('objetivo cumplido', (string) $r['error']);
         self::assertStringContainsString('--session', (string) $r['hint']);
     }
@@ -1102,7 +1102,7 @@ final class AgentOperationTest extends TestCase
         self::assertTrue($r['interrupted'] ?? false);
         self::assertArrayNotHasKey('error', $r);
         self::assertSame(3, $r['steps'] ?? 0, 'dice cuánto alcanzó a hacer');
-        self::assertStringContainsString('pídele que siga', (string) ($r['hint'] ?? ''));
+        self::assertStringContainsString('ask it to continue', (string) ($r['hint'] ?? ''));
 
         // LA SESIÓN SIGUE VIVA. Quedó apendado que se interrumpió, y nada la cerró: la vuelta
         // siguiente continúa desde donde estaba, que es todo el punto de poder interrumpir.
