@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.54.0](https://github.com/getmilpa/framework/compare/v0.53.0...v0.54.0) (2026-09-29)
+
+
+### Features
+
+* **mcp:** bin/mcp-server.php hands every call to coa mcp ([#150](https://github.com/getmilpa/framework/issues/150)) ([020b823](https://github.com/getmilpa/framework/commit/020b823338313e958793f5b3a22c26cffb515c40))
+* **worker:** never leave for, nor serve, a house that does not boot (greenhouse 0506) ([#151](https://github.com/getmilpa/framework/issues/151)) ([d3b79a1](https://github.com/getmilpa/framework/commit/d3b79a181f16058d63a51b05f19ffb9eb2443601))
+
 ## [0.53.0](https://github.com/getmilpa/framework/compare/v0.52.3...v0.53.0) (2026-09-28)
 
 
