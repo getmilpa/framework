@@ -3,134 +3,18 @@
 
 declare(strict_types=1);
 
-use Milpa\McpServer\JsonRpcService;
-use Milpa\Interfaces\Di\DIContainerInterface;
-use Milpa\Runtime\Kernel;
-use Milpa\ToolRuntime\Contracts\ToolContext;
-use Milpa\ToolRuntime\ToolRegistry;
-use Psr\Log\NullLogger;
+use Milpa\AppRuntime\Console\Application;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$root = \dirname(__DIR__);
-
-// The MCP surface is OPT-IN: `milpa/tool-runtime` ships with this app, `milpa/mcp-server` does not,
-// so a stock `composer create-project milpa/framework` app has no JsonRpcService. Probing with
-// class_exists() is safe either way — Composer's autoloader reports «not found» without a fatal — and
-// `::class` on an imported name that is not loadable resolves at compile time to a plain string. When
-// the package is absent this prints the one command that switches it on and exits 0: an app with no
-// MCP surface yet is the honest default, not an error.
-if (!\class_exists(ToolRegistry::class) || !\class_exists(JsonRpcService::class)) {
-    fwrite(STDERR, 'MCP surface not enabled. Run: php bin/coa capabilities:enable milpa/mcp-server  (or: composer require milpa/mcp-server)' . \PHP_EOL);
-    exit(0);
-}
-
-// Same config-loading contract `bin/coa` uses: config/boot.php resolves the container and the
-// plugins that actually boot, config/app.php is the optional app-config bag Kernel::boot()
-// threads into Milpa\Runtime\Config. Missing config/app.php is not fatal — an empty bag boots
-// fine; a missing config/boot.php means no plugins and no pre-wired services, which still serves
-// an empty tools/list.
-$bootFile = $root . '/config/boot.php';
-$boot = \is_file($bootFile) ? require $bootFile : [];
-/** @var list<class-string> $plugins */
-$plugins = \is_array($boot) && \is_array($boot['plugins'] ?? null) ? $boot['plugins'] : [];
-$container = \is_array($boot) ? ($boot['container'] ?? null) : null;
-
-$configFile = $root . '/config/app.php';
-/** @var array<string, mixed> $config */
-$config = \is_file($configFile) ? require $configFile : [];
-if (!\is_array($config)) {
-    $config = [];
-}
-
-// The generic MCP server this app ships (— see
-// docs/superpowers/specs/2026-07-09-frictions-command-discovery.md and
-// docs/library/vision-milpa-commands.md's "MCP disuelve make:mcp-server"): boots the REAL kernel
-// with a fresh ToolRegistry wired in, so every #[Tool] a booted ToolProviderInterface plugin
-// registers is exposed here automatically — an app with tools does NOT copy this file, it just
-// has one. An app with zero tools still boots clean and serves an empty `tools/list`. Reached only
-// once the guard above confirms both agent-ready packages are actually installed.
-$bootConfig = [
-    'root' => $root,
-    'plugins' => $plugins,
-    'config' => $config,
-    'toolRegistry' => new ToolRegistry(new NullLogger()),
-];
-if ($container instanceof DIContainerInterface) {
-    $bootConfig['container'] = $container;
-}
-
-$kernel = Kernel::boot($bootConfig);
-
-// Register the booted Kernel into its own container so AgentOperations' session-store fallback can build a
-// file-backed store for THIS surface. Without it, agent:show / agent:answer over MCP report "nowhere to store
-// sessions": the MCP surface is BLIND to the sessions the CLI and web surfaces share, so a gate the agent parked
-// cannot be answered here (greenhouse decisions/0134, evidence/0395).
-$kernelContainer = $kernel->container();
-if ($kernelContainer instanceof DIContainerInterface) {
-    $kernelContainer->registerService(Kernel::class, $kernel);
-}
-
-$registry = $kernel->toolRegistry();
-if (!$registry instanceof ToolRegistry) {
-    // Unreachable via the boot call above (it always passes a ToolRegistry) — guards the type
-    // for static analysis and any future edit that stops wiring one.
-    fwrite(STDERR, 'milpa · coa mcp-server — no tool registry wired, exiting.' . PHP_EOL);
-    exit(1);
-}
-
-// TODO lo que la app declara, no sólo lo que los plugins arrancaron: `kernel->commands()` deja
-// fuera lo de `config/operations.php`, así que un cliente MCP veía menos herramientas que `coa`.
-// Una superficie que ofrece menos que otra sobre la misma app es un inventario mintiendo.
-(new \Milpa\Console\McpProjector())->projectAll(
-    \Milpa\AppRuntime\Support\Operations::all($kernel, $root),
-    $registry,
-    $kernel->container(),
-);
-
-$service = new JsonRpcService($registry);
-
-// STDOUT is protocol-only: one JSON-RPC message per line. Human-readable output goes to STDERR
-// so it never corrupts the wire — same contract as example-agent-ready-blog's bin/mcp-server.php,
-// the model this file follows.
-fwrite(STDERR, 'milpa · coa mcp-server — MCP stdio server ready (close stdin to stop)' . PHP_EOL);
-
-/** @param array<string, mixed> $response */
-$writeLine = static function (array $response): void {
-    fwrite(STDOUT, json_encode($response) . "\n");
-    fflush(STDOUT);
-};
-
-while (($line = fgets(STDIN)) !== false) {
-    $line = trim($line);
-    if ($line === '') {
-        continue;
-    }
-
-    /** @var mixed $request */
-    $request = json_decode($line, true);
-
-    if (json_last_error() !== JSON_ERROR_NONE || !is_array($request)) {
-        $writeLine([
-            'jsonrpc' => '2.0',
-            'error' => ['code' => -32700, 'message' => 'Parse error'],
-            'id' => null,
-        ]);
-        continue;
-    }
-
-    // This transport carries no auth: ToolContext::stdio() is the documented context for exactly
-    // this case — process-level trust, principal 'stdio'.
-    $ctx = ToolContext::stdio((string) ($request['id'] ?? uniqid('mcp-', true)));
-
-    // JsonRpcService::handle() owns the whole JSON-RPC contract: envelope errors and batch
-    // refusals come back as well-formed error arrays (never thrown), and notifications — any
-    // message without an "id" member — return null. This transport's only job: write what is
-    // non-null, write nothing for null.
-    /** @var array<string, mixed> $request */
-    $response = $service->handle($request, $ctx);
-
-    if ($response !== null) {
-        $writeLine($response);
-    }
-}
+// The MCP surface of this app is `php bin/coa mcp`; this file hands every call to it, and stays so the `.mcp.json`
+// files that already name it keep working.
+//
+// It used to hold the whole server, and that was the defect (greenhouse decisions/0507): a file `create-project`
+// copies never receives a fix, and the server it held booted a different kernel than `coa` — without the machine's
+// config (`.milpa/agent.json`) or its secrets — and kept that kernel for as long as the client stayed, so a plugin
+// installed, promoted or disabled afterwards was invisible (a disabled one kept answering). `coa mcp` lives in
+// milpa/app-runtime, boots the same kernel as `coa`, and restarts it when what defines the house changes.
+//
+// STDOUT is the protocol, one JSON-RPC message per line; everything a person reads goes to STDERR.
+exit((new Application(\dirname(__DIR__)))->run([$argv[0], 'mcp', ...\array_slice($argv, 1)]));
