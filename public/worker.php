@@ -34,8 +34,10 @@ declare(strict_types=1);
 // the boot sent every worker out of its loop and its replacements died at boot in a loop — requests
 // waited with no answer (evidence/1038, n5). So before leaving, a stale worker asks a child process to
 // boot the house as it is now (`KernelDefinition::nextBootFails()`). If it does not boot, the worker
-// STAYS: it keeps serving with the kernel it has — old, but alive — says why on every response
-// (`Milpa-Kernel-Held`) and once in the log, and leaves as soon as the house boots again (an undo, a fix).
+// STAYS — but it does not serve with the kernel it has: Rod decided (2026-09-28) that a long-lived server
+// STOPS HONESTLY and says why. Every request is answered `503` with the reason
+// (`KernelDefinition::houseDoesNotBoot()`), the log says it once, and the worker leaves as soon as the
+// house boots again (an undo, a fix).
 //
 // To serve with it (the `php_server` index is what makes the mode REAL — without it requests run
 // classic on the spare threads; the proof is `frankenphp_worker_request_count` growing):
@@ -107,35 +109,39 @@ $booted = $knowsItsDefinition ? $boot() : null;
 // change caught here is answered at the first request — a worker must reach its loop before it leaves.
 $definition?->takeInIncluded();
 $stale = null;
-$held = null;
+$broken = null;
 
-// Whether the stale worker may leave: only for a house that boots. Otherwise it is HELD — it stays, says
-// why once in the log (and again only when the reason changes), and keeps serving.
+// Whether the stale worker may leave: only for a house that boots. Otherwise the house is BROKEN for this
+// worker: it stays alive (a replacement would die at boot), says why once in the log (and again only when
+// the reason changes), and answers every request with the refusal — never with the old kernel.
 // A runtime older than 0.197 cannot ask (no `nextBootFails()`): the worker leaves as 0505 had it.
-$mayLeave = static function (string $changed) use (&$held, $definition): bool {
-    $broken = $definition !== null && method_exists($definition, 'nextBootFails') ? $definition->nextBootFails() : null;
-    if ($broken === null) {
+$mayLeave = static function (string $changed) use (&$broken, $definition): bool {
+    $why = $definition !== null && method_exists($definition, 'nextBootFails') ? $definition->nextBootFails() : null;
+    if ($why === null) {
         return true;
     }
-    if ($held !== $broken) {
-        error_log('[milpa] public/worker.php: ' . $changed . ' changed, and the house does not boot with it (' . $broken . '); serving with the kernel this worker has until it does.');
+    if ($broken !== $why) {
+        error_log('[milpa] public/worker.php: ' . $changed . ' changed, and the house does not boot with it (' . $why . '); answering 503 until it does.');
     }
-    $held = $broken;
+    $broken = $why;
 
     return false;
 };
 
-$handle = static function () use (&$booted, &$stale, &$held, $boot, $definition, $mayLeave): void {
+$handle = static function () use (&$booted, &$stale, &$broken, $boot, $definition, $mayLeave): void {
     [$kernel, $psr17, $handler, $failures] = $booted ?? $boot();
     $request = (new ServerRequestCreator($psr17, $psr17, $psr17, $psr17))->fromGlobals();
 
     if ($definition !== null && ($stale = $definition->staleBecause()) !== null) {
-        if ($mayLeave($stale)) {
-            (new ResponseEmitter())->emit($definition::retryHere($request, $psr17));
-
-            return;
+        $leave = $mayLeave($stale);
+        (new ResponseEmitter())->emit($leave || $broken === null
+            ? $definition::retryHere($request, $psr17)
+            : $definition::houseDoesNotBoot($broken, $psr17));
+        if (!$leave) {
+            $stale = null;
         }
-        $stale = null;
+
+        return;
     }
 
     $response = $failures->process($request, new class ($kernel, $handler) implements \Psr\Http\Server\RequestHandlerInterface {
@@ -148,9 +154,6 @@ $handle = static function () use (&$booted, &$stale, &$held, $boot, $definition,
             return IdentityChain::fromContainer($this->kernel->container())->handle($request, $this->handler);
         }
     });
-    if ($held !== null) {
-        $response = $response->withHeader('Milpa-Kernel-Held', (string) preg_replace('/[^\x20-\x7E]/', '?', $held));
-    }
     (new ResponseEmitter())->emit($response);
 
     $stale = $definition?->staleBecause();

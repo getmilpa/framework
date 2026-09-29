@@ -116,27 +116,28 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
     }
 
     /**
-     * Another process broke the boot: the worker does NOT leave for a house that does not boot (decisions/0506).
+     * Another process broke the boot: the worker neither leaves into a crash loop nor serves the old kernel (decisions/0506).
      *
-     * Measured in evidence/1038 (n5): workers that left for a boot-breaking promotion were replaced by
-     * workers that died at boot, in a loop, and requests waited with no answer. Here the stale worker asks a
-     * child process to boot the house as it is now, hears «does not boot», and keeps serving — old, but
-     * alive — saying why once in the log. When the house boots again, it sends the next request back and leaves.
+     * Measured in evidence/1038 (n5): workers that left for a boot-breaking promotion were replaced by workers
+     * that died at boot, in a loop, and requests waited with no answer. Rod decided (2026-09-28) that a long-lived
+     * server then STOPS HONESTLY and says why: the stale worker asks a child process to boot the house, hears «does
+     * not boot», stays, and answers every request 503 with the reason — never with the kernel from before. When the
+     * house boots again, it sends the next request back and leaves.
      */
-    public function testAWorkerDoesNotLeaveForAHouseThatDoesNotBoot(): void
+    public function testAWorkerStopsHonestlyWhileTheHouseDoesNotBoot(): void
     {
         if (!method_exists(KernelDefinition::class, 'nextBootFails')) {
             self::markTestSkipped('milpa/app-runtime without nextBootFails (0.197): the worker leaves as 0505 had it.');
         }
         $run = $this->worker(['steady', 'break-before', 'steady', 'steady', 'fix-before', 'steady']);
 
-        self::assertSame([200, 200, 200, 200, 307], array_column($run['served'], 'status'), $run['log']);
-        self::assertSame(5, $run['calls'], 'held through the break; gone after the house booted again');
+        self::assertSame([200, 503, 503, 503, 307], array_column($run['served'], 'status'), $run['log']);
+        self::assertSame(5, $run['calls'], 'alive through the break; gone after the house booted again');
         self::assertSame(1, substr_count($run['log'], 'the house does not boot with it'), 'said once, not once per request: ' . $run['log']);
         self::assertStringContainsString('RuntimeException: broken by the test', $run['log']);
     }
 
-    /** The request that broke the boot is served, and the worker stays after it instead of leaving into a crash loop. */
+    /** The request that broke the boot was already served; the ones after it are refused, and the worker does not leave into a crash loop. */
     public function testARequestThatBreaksTheBootDoesNotEndTheWorker(): void
     {
         if (!method_exists(KernelDefinition::class, 'nextBootFails')) {
@@ -144,7 +145,7 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
         }
         $run = $this->worker(['steady', 'break-during', 'steady']);
 
-        self::assertSame([200, 200, 200], array_column($run['served'], 'status'), $run['log']);
+        self::assertSame([200, 200, 503], array_column($run['served'], 'status'), $run['log']);
         self::assertSame(4, $run['calls'], 'the worker asked for every request, and once more when the plan ended');
         self::assertStringContainsString('the house does not boot with it', $run['log']);
     }
