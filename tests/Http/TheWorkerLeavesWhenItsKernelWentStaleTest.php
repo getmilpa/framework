@@ -136,7 +136,10 @@ final class TheWorkerLeavesWhenItsKernelWentStaleTest extends TestCase
         self::assertSame(1, substr_count($run['log'], 'the house does not boot with it'), 'said once, not once per request: ' . $run['log']);
         self::assertStringContainsString('RuntimeException: broken by the test', $run['log']);
         // Not in app.debug (the skeleton's default): the 503 is generic — the reason is in the log, not in the page (0512).
-        self::assertSame("This house does not boot; it answers again as soon as it does.\n", $run['served'][1]['body']);
+        // A runtime before 0512 (no HIDDEN_REASON) always says why; that is its answer, not this worker's.
+        if (\defined(KernelDefinition::class . '::HIDDEN_REASON')) {
+            self::assertSame("This house does not boot; it answers again as soon as it does.\n", $run['served'][1]['body']);
+        }
     }
 
     /** In `app.debug`, the worker's 503 says why (Rod, 2026-09-29, accepting decisions/0512). */
