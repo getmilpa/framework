@@ -20,6 +20,15 @@ require __DIR__ . '/../vendor/autoload.php';
 // exactly like config/boot.php below, which is loaded relative to the same root.
 $root = \dirname(__DIR__);
 
+// A BOOT THAT FAILS IS A 503, NEVER A 200 (greenhouse decisions/0512). Measured on fresh cattle (evidence/1035
+// F1, evidence/1039): when the house did not boot — a plugin whose `boot()` threw, a class missing an interface
+// method — `php -S` and FrankenPHP classic answered HTTP 200 with `Fatal error: … in /home/…` in the body. The
+// boot below runs before `ExceptionMiddleware` exists, and a compile fatal is caught by nobody. So from here to
+// the kernel being in its container, errors are not displayed and output is held; a boot that dies answers
+// `503`, `Milpa-House-Does-Not-Boot` and the one-line reason — what the FrankenPHP worker answers (0506) — with
+// no absolute path. PHP's own log still gets the whole fatal. A runtime older than 0.198 has no watch.
+$watch = class_exists(\Milpa\AppRuntime\Support\BrokenBootAnswer::class) ? \Milpa\AppRuntime\Support\BrokenBootAnswer::watch($root) : null;
+
 /** @var array{container: \Milpa\Interfaces\Di\DIContainerInterface, plugins: list<class-string>} $boot */
 $boot = require $root . '/config/boot.php';
 
@@ -65,6 +74,9 @@ $kernel = Kernel::boot([
 // «nowhere to store sessions» over the web while working from the terminal, and that reads as a
 // broken app instead of as a missing line in this file.
 $boot['container']->registerService(Kernel::class, $kernel);
+
+// Booted: from here a failure is a request's, and `ExceptionMiddleware` answers it with a 500.
+$watch?->booted();
 
 $psr17 = new Psr17Factory();
 $request = (new ServerRequestCreator($psr17, $psr17, $psr17, $psr17))->fromGlobals();
