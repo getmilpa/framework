@@ -90,10 +90,12 @@ $ php bin/coa plugins:list --json
 {"ok":true,"result":{"plugins":[{"name":"HelloPlugin","version":"0.1.0","type":"Web","enabled":true}]}}
 ```
 
-**MCP** — after `composer require milpa/mcp-server`, speak JSON-RPC to `bin/mcp-server.php`:
+**MCP** — after `composer require milpa/mcp-server`, speak JSON-RPC to `php bin/coa mcp` (`bin/mcp-server.php` hands
+to it). It serves the kernel of NOW: install, promote or disable a plugin, or write config, and the next call sees it
+— no restart, and a client that honors `notifications/tools/list_changed` is told when the tools moved:
 
 ```console
-$ … | php bin/mcp-server.php
+$ … | php bin/coa mcp
 {"jsonrpc":"2.0","result":{"content":[{"type":"text",
  "text":"{\"success\":true,\"data\":{\"plugins\":[{\"name\":\"HelloPlugin\",\"version\":\"0.1.0\",…}]}}"}]}}
 ```
@@ -446,7 +448,7 @@ The box is deliberately small. Two examples of what it does **not** include:
 .milpa/decisions/        the choices that shaped this app: who, what, why
 .milpa/evidence/         slice evidence — born empty, used from the founding itself
 bin/coa                  the dispatcher — boots, projects, runs
-bin/mcp-server.php       the same operations, over MCP
+bin/mcp-server.php       the same operations, over MCP (hands to `coa mcp`)
 config/plugins.php       which plugins boot (a list you read in a diff)
 config/operations.php    which packages contribute operations
 config/http.php          which operations get an HTTP route (empty by default)
