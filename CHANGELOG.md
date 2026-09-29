@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.55.0](https://github.com/getmilpa/framework/compare/v0.54.0...v0.55.0) (2026-09-29)
+
+
+### Features
+
+* **front-controller:** a boot that fails answers 503 with the reason, never 200 with the fatal ([#153](https://github.com/getmilpa/framework/issues/153)) ([594394b](https://github.com/getmilpa/framework/commit/594394b6f5259d6fc881fa70879dfdb4b584f549))
+
 ## [0.54.0](https://github.com/getmilpa/framework/compare/v0.53.0...v0.54.0) (2026-09-29)
 
 
