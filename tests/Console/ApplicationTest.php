@@ -398,7 +398,13 @@ final class ApplicationTest extends TestCase
         self::assertSame(['sí', 'no'], $hijo['options']);
     }
 
-    /** Y contestarle al hijo va por la MISMA operación que contesta las propias, con su id. */
+    /**
+     * Answering a child goes through the SAME operation that answers the chat's own questions, with the child's id.
+     *
+     * And through the same door (milpa/app-runtime, greenhouse decisions/0526): an answer is a lasting change, so an
+     * unsigned one is refused — the line that signs it names `agent:answer` and the child's own id — and nothing
+     * ran: the child still waits, and the parent's question was never touched.
+     */
     public function testAnsweringAChildGoesThroughTheSameOperationWithItsOwnId(): void
     {
         OptIn::needs(\Milpa\Agent\SessionStore::class);
@@ -422,9 +428,10 @@ final class ApplicationTest extends TestCase
 
         $eco = (new \ReflectionMethod($app, 'contestarAlHijo'))->invoke($app, $j . '.sub-real', 'sí');
 
-        self::assertTrue($eco['ok'] ?? false);
-        self::assertNull($almacen->load($j . '.sub-real')?->question, 'el hijo dejó de esperar');
-        self::assertNull($almacen->load($j)?->question, 'y la del padre no se tocó');
+        self::assertFalse($eco['ok'] ?? true);
+        self::assertSame("php bin/coa agent:answer --session='{$j}.sub-real' --answer='sí' --sign", $eco['sign'] ?? null);
+        self::assertNotNull($almacen->load($j . '.sub-real')?->question, 'nothing ran: the child still waits');
+        self::assertNull($almacen->load($j)?->question, 'and the parent was never touched');
     }
 
     /**

@@ -240,10 +240,12 @@ final class DispatcherTest extends TestCase
     }
 
     /**
-     * Y lo que el chat pregunta pasa por la MISMA operación `agent` que la terminal.
+     * What the chat asks goes through the SAME `agent` operation as the terminal — and through the same door.
      *
-     * Es lo que impide que las dos superficies contesten distinto: si el TUI armara su propio
-     * orquestador, un cambio en la operación dejaría de reflejarse aquí sin que nada lo dijera.
+     * That is what keeps the two surfaces from answering differently: if the TUI built its own orchestrator, a
+     * change in the operation would stop reaching it without anything saying so. Since milpa/app-runtime's
+     * greenhouse decisions/0526 the chat signs for nobody: an unsigned turn with no receipt standing for its
+     * session is refused before the provider is even looked for, and the line that signs it names `agent`.
      */
     public function testTheChatAsksThroughTheSameAgentOperation(): void
     {
@@ -252,11 +254,11 @@ final class DispatcherTest extends TestCase
         $app = new Application(\dirname(__DIR__, 2));
         $metodo = new \ReflectionMethod($app, 'preguntarAlAgente');
 
-        /** @var array{ok: bool, error?: string, hint?: string} $r */
-        $r = $metodo->invoke($app, 'lo que sea');
+        /** @var array{ok: bool, error?: string, sign?: string} $r */
+        $r = $metodo->invoke($app, 'anything at all');
 
-        // Sin llave configurada, la respuesta es la de la operación — no una inventada aquí.
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('API key', (string) $r['error']);
+        self::assertStringContainsString('«agent» declares a persistent change', (string) $r['error']);
+        self::assertStringStartsWith("php bin/coa agent --prompt='anything at all' --session=", (string) ($r['sign'] ?? ''));
     }
 }
