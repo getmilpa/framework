@@ -464,7 +464,7 @@ final class ApplicationTest extends TestCase
         $this->borrar($raiz);
 
         self::assertSame(1, $codigo, 'no repara lo que el diagnóstico no pidió');
-        self::assertStringContainsString('no recomienda instalar nada', $texto, 'contestó, no se cayó');
+        self::assertStringContainsString('recommends installing nothing', $texto, 'contestó, no se cayó');
         self::assertStringNotContainsString('Initialization Error', $texto);
     }
 
