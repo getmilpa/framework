@@ -112,7 +112,7 @@ final class CapabilityRepairTest extends TestCase
         $r = $this->reparar(['package' => 'vendor/lo-que-sea'], ['milpa/mcp-server']);
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('no está entre lo que el diagnóstico recomienda', (string) $r['error']);
+        self::assertStringContainsString('is not among what the diagnosis recommends', (string) $r['error']);
     }
 
     /** Y la negativa no es un callejón: dice lo que SÍ se puede reparar. */
@@ -134,7 +134,7 @@ final class CapabilityRepairTest extends TestCase
         $r = $this->reparar(['package' => 'milpa/mcp-server'], []);
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('no recomienda instalar nada', (string) $r['error']);
+        self::assertStringContainsString('recommends installing nothing', (string) $r['error']);
     }
 
     /**
@@ -193,7 +193,7 @@ final class CapabilityRepairTest extends TestCase
 
         self::assertFalse($r['ok'], 'el ok se cae aunque la instalación funcionara');
         self::assertFalse($r['boots']);
-        self::assertStringContainsString('ya no arranca', (string) $r['error']);
+        self::assertStringContainsString('no longer boots', (string) $r['error']);
         self::assertStringContainsString('MILPA_CAPABILITY_MISSING', (string) $r['boot_error'], 'con el detalle real');
         self::assertStringContainsString('composer remove', (string) $r['hint'], 'y cómo deshacerlo');
     }
