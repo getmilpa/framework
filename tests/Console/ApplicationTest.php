@@ -50,9 +50,35 @@ final class ApplicationTest extends TestCase
         // THE SKELETON LISTS ONLY WHAT IT SHIPS (greenhouse evidence/0565): `make` reaches the help once
         // `capabilities:enable milpa/devtools` writes the provider the package declares — never from a
         // pre-listed class this app does not ship. Installed but not declared, the help does not offer it.
+        // Once `capabilities:enable milpa/devtools` declared it, the help offers it: the help mirrors the
+        // declaration in a fresh house and in an enabled one alike (greenhouse decisions/0552).
         if (OptIn::has(\Milpa\DevTools\Doctor\Repair::class)) {
-            self::assertStringNotContainsString('  make ', $r['texto'], 'the stock help does not offer what the app has not declared');
+            if (OptIn::declaresOperationsOf('milpa/devtools', \dirname(__DIR__, 2))) {
+                self::assertStringContainsString('  make ', $r['texto'], 'the help offers what the app declared');
+            } else {
+                self::assertStringNotContainsString('  make ', $r['texto'], 'the stock help does not offer what the app has not declared');
+            }
         }
+    }
+
+    /**
+     * The names config/plugins.php declares, each read from its class's PluginMetadata — sorted.
+     *
+     * @return list<string>
+     */
+    private function declaredPluginNames(): array
+    {
+        /** @var list<class-string> $declared */
+        $declared = require \dirname(__DIR__, 2) . '/config/plugins.php';
+        $names = [];
+        foreach ($declared as $class) {
+            $attributes = (new \ReflectionClass($class))->getAttributes(\Milpa\Attributes\PluginMetadata::class);
+            self::assertCount(1, $attributes, "{$class} carries its PluginMetadata");
+            $names[] = $attributes[0]->newInstance()->name;
+        }
+        sort($names);
+
+        return $names;
     }
 
     /** Lo que muta se lista aparte de lo que consulta, porque no se leen igual. */
@@ -85,7 +111,14 @@ final class ApplicationTest extends TestCase
         // no tienen nada que ver con lo que mide.
         $nombres = array_column($json['result']['plugins'], 'name');
         sort($nombres);
-        self::assertSame(['HelloPlugin', 'OperationsHttp', 'PluginManagement'], $nombres);
+
+        // The stock three are the floor every house keeps. The whole list is what THIS house declares in
+        // config/plugins.php: `capabilities:enable milpa/auth` adds Passkey there, and a suite that
+        // pinned the fresh trio failed in every house that had enabled anything (greenhouse decisions/0552).
+        foreach (['HelloPlugin', 'OperationsHttp', 'PluginManagement'] as $piso) {
+            self::assertContains($piso, $nombres);
+        }
+        self::assertSame($this->declaredPluginNames(), $nombres, 'the registry lists exactly what config/plugins.php declares');
     }
 
     /**

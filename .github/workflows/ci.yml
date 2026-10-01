@@ -71,6 +71,31 @@ jobs:
           php -r '$record = json_decode(file_get_contents(".milpa/framework.json"), true); exit(isset($record["born"]) && !file_exists(".git") ? 0 : 1);'
           vendor/bin/phpunit --fail-on-warning --fail-on-phpunit-warning
 
+      # The same suite in a house that ENABLED its capabilities (greenhouse decisions/0552). Every other
+      # step installs the opt-ins with Composer alone, so config/ never declares them; a person runs
+      # `capabilities:enable`, which writes config/operations.php and config/plugins.php. That house
+      # failed three assertions pinned to the fresh state while CI stayed green. The suite now asserts
+      # what the house declares, and this step keeps both houses in CI. The key is a throwaway: enable
+      # is a lasting change and does not run unsigned.
+      - name: Suite after capabilities:enable, in a create-project house
+        run: |
+          app="$RUNNER_TEMP/milpa-framework-enabled"
+          export GNUPGHOME="$RUNNER_TEMP/gnupg-enable"
+          mkdir -m 700 "$GNUPGHOME"
+          gpg --batch --pinentry-mode loopback --passphrase '' --quick-gen-key 'CI house <ci@milpa.invalid>' ed25519 sign never
+          repository=$(php -r 'echo json_encode(["type" => "path", "url" => getcwd(), "options" => ["symlink" => false, "versions" => ["milpa/framework" => "dev-smoke"]]]);')
+          composer create-project --repository="$repository" --no-interaction --no-progress --remove-vcs \
+            milpa/framework "$app" dev-smoke
+          rm -rf "$app/.git"
+          cd "$app"
+          for capability in milpa/agent milpa/ai-gateway milpa/auth milpa/data milpa/devtools milpa/mcp-server; do
+            php bin/coa capabilities:enable "$capability" --sign
+          done
+          # The control: the enable really declared what the suite now reads, or this step proves nothing.
+          grep -q 'DevToolsOperations' config/operations.php
+          grep -q 'PasskeyPlugin' config/plugins.php
+          vendor/bin/phpunit --fail-on-phpunit-warning
+
       # Y LA CARA COMPLETA. Los opt-in se instalan AQUI y no en require-dev: `create-project` instala
       # los dev, asi que ponerlos ahi haria que toda app naciera con los seis puestos — el corte seria
       # invisible justo donde importa.

@@ -108,8 +108,14 @@ final class OperationsTest extends TestCase
         // milpa/devtools', and the package DECLARES its provider in its manifest so `capabilities:enable`
         // writes it into config/operations.php. Installed but not declared, the atoms are absent — the
         // control; declared the way the enable writes them, they are offered — the measurement.
+        // A house that already ran `capabilities:enable milpa/devtools` declared it, and then `make` IS
+        // offered: the invariant is "offered exactly when declared", not the fresh state (decisions/0552).
         if (OptIn::has(\Milpa\DevTools\Doctor\Repair::class)) {
-            self::assertNotContains('make', $nombres, 'the stock list does not pre-list a class the skeleton does not ship');
+            if (OptIn::declaresOperationsOf('milpa/devtools', $this->root())) {
+                self::assertContains('make', $nombres, 'what this house declared, the app offers');
+            } else {
+                self::assertNotContains('make', $nombres, 'the stock list does not pre-list a class the skeleton does not ship');
+            }
             self::assertContains('make', $this->namesOnceTheCapabilityDeclaredItsProvider(), 'what the manifest declares, enable writes, and the app offers');
         }
         if (OptIn::has(\Milpa\AiGateway\LlmService::class)) {
@@ -133,10 +139,16 @@ final class OperationsTest extends TestCase
         mkdir($copy . '/config', 0o775, true);
         copy($this->root() . '/config/operations.php', $copy . '/config/operations.php');
         try {
+            // In a house that already enabled devtools the providers are there, and the write adds
+            // nothing — it never duplicates a line. Either way the copy ends up declaring every one.
+            $already = OptIn::declaresOperationsOf('milpa/devtools', $this->root());
             $written = \Milpa\AppRuntime\Support\Capabilities::registerOperations($copy, $declared);
-            self::assertSame($declared, $written, 'the enable writes every provider the manifest names');
+            self::assertSame($already ? [] : $declared, $written, 'the enable writes every provider the manifest names, once');
             /** @var list<class-string> $list */
             $list = require $copy . '/config/operations.php';
+            foreach ($declared as $provider) {
+                self::assertContains(ltrim($provider, '\\'), array_map(static fn (string $c): string => ltrim($c, '\\'), $list));
+            }
 
             return array_map(static fn ($op): string => $op->name, Operations::declared(new DIContainer(), $list, $copy));
         } finally {
