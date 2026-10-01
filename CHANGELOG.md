@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.55.1](https://github.com/getmilpa/framework/compare/v0.55.0...v0.55.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* the README describes the house a new app actually gets ([#159](https://github.com/getmilpa/framework/issues/159)) ([7666dbb](https://github.com/getmilpa/framework/commit/7666dbbd88379de992deff72eeb401ddc9c9a887))
+
 ## [0.55.0](https://github.com/getmilpa/framework/compare/v0.54.0...v0.55.0) (2026-09-29)
 
 
