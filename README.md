@@ -38,17 +38,19 @@ operations, signing, the constitution, capabilities, trials, seats and grants in
 plugins declared, projects them onto the terminal and runs one:
 
 ```
-coa — el runtime de esta app. Cada comando es una operación declarada.
+coa — the runtime of this app. Every command is a declared operation.
 
-Consultan:
-  plugins:list  List every installed plugin with its version, type and whether it boots.
-  plugins:show  Everything the registry knows about one plugin.
-  validate      Valida el manifiesto de un plugin y los proveedores que declara
+They read:
+  capabilities          What this app can do today, and the command that grows it
+  foundation            What this app is — or, if not founded yet, how it becomes something
+  plugins:list          List every installed plugin with its version, type and whether it boots.
+  …
 
-Cambian algo:
-  make             Andamia un artefacto del framework (controller o entity) y lo verifica
-  plugins:disable  Turn a plugin off without removing it or its data.
-  plugins:enable   Turn a plugin on: it boots from the next request or command.
+They change something:
+  capabilities:enable   Install an opt-in capability by name — one step instead of three
+  plugins:disable       Turn a plugin off without removing it or its data.
+  plugins:enable        Turn a plugin on: it boots from the next request or command.
+  …
 ```
 
 That listing is **derived**, not written. Install a plugin that declares operations and they appear —
@@ -118,7 +120,7 @@ That 401 is the surface working rather than failing. To get past it you need an 
 its own opt-in — `composer require milpa/auth milpa/data`, and `token:*` appears:
 
 ```console
-$ php bin/coa token:new --actor=demo --scopes=plugins:read
+$ php bin/coa token:new --actor=demo --scopes=plugins:read --sign
 $ curl -s -H "Authorization: Bearer $TOKEN" localhost:8000/plugins
 {"plugins":[{"name":"HelloPlugin","version":"0.1.0","type":"Web","enabled":true}]}   # 200
 ```
@@ -161,6 +163,39 @@ This operation mutates and needs your authorization. Re-run with --sign.
 The declaration travels with the operation, so every surface applies the same rule. It is not a flag
 the terminal invented.
 
+## Your key
+
+`--sign` asks the `gpg` on your machine to sign the call. A new house asks for it early — founding the
+house and enabling any capability both sign — so the first thing a new machine needs is a key that can
+sign. If `gpg --list-secret-keys` prints nothing, create one once:
+
+```bash
+gpg --quick-gen-key 'Your Name <you@example.com>' ed25519 sign never
+```
+
+gpg asks for a passphrase; a hardware key (a YubiKey) works the same way. Without a usable key, `--sign`
+refuses and says which case it met — no key in the keyring it read (and which keyring that was), a key
+that could sign but whose prompt was declined, or no `gpg` at all — and what to do about it:
+
+```console
+$ php bin/coa capabilities:enable milpa/ai-gateway --sign
+✗ Nothing was signed, so nothing was authorized.
+  No key that can sign is in the keyring this terminal reads (/home/you/.gnupg).
+  Create one once, then run the same command again:
+    gpg --quick-gen-key 'Your Name <you@example.com>' ed25519 sign never
+  If your key lives in another keyring, set GNUPGHOME to it. A resident signs with a keyring of its own.
+```
+
+**A resident agent signs with a key of its own, never with yours.** Its signature is what the house
+holds it to, so it lives in a separate keyring. Create it once per machine, without a passphrase (the
+resident does not type one), and put `GNUPGHOME` in front of every command the resident runs:
+
+```bash
+mkdir -m 700 "$HOME/.gnupg-resident"
+GNUPGHOME="$HOME/.gnupg-resident" gpg --batch --passphrase '' --quick-gen-key 'resident <resident@localhost>' ed25519 sign never
+GNUPGHOME="$HOME/.gnupg-resident" php bin/coa identity:accept --invite=… --sign   # the line the panel shows when you give it a seat
+```
+
 ## Two screens
 
 ```bash
@@ -180,16 +215,21 @@ is a fact of the destination, not of the screen.
 
 ## The agent
 
-`milpa/ai-gateway` ships the loop that alternates model ↔ tools. `coa agent` is the line that calls
-it, and what it hands the model is not a separate catalogue: it is **this app's operations**, the
-same ones an MCP client sees.
+A new house has **no** `coa agent`: running it answers `no such command «agent»`. The agent is two
+opt-ins — `milpa/ai-gateway` ships the loop that alternates model ↔ tools, `milpa/agent` the sessions it
+runs in — and `coa agent` is the line that calls them. What it hands the model is not a separate
+catalogue: it is **this app's operations**, the same ones an MCP client sees.
 
 ```bash
+php bin/coa capabilities:enable milpa/ai-gateway --sign
+php bin/coa capabilities:enable milpa/agent --sign
+
 export ANTHROPIC_API_KEY=...      # or OPENAI_API_KEY
-php bin/coa agent "which plugins are on, and would enabling the other one resolve?"
+php bin/coa agent "which plugins are on, and would enabling the other one resolve?" --sign
 ```
 
-Without a key it says so and stops. There is no demo mode: an agent that answers something plausible
+A run can change the house, so it is signed like any other lasting change; an unsigned `coa agent`
+is refused before any model is asked. Without a key it says so and stops. There is no demo mode: an agent that answers something plausible
 without having called anything teaches you to trust answers nobody produced. The answer comes back
 with how many steps it took and how many tools it had, because "the agent replied" does not
 distinguish using your app from replying from memory.
@@ -198,15 +238,19 @@ distinguish using your app from replying from memory.
 vLLM, a proxy — and no token leaves the building:
 
 ```bash
-export MILPA_AGENT_BASE_URL=https://llama.local
-export MILPA_AGENT_BASIC_AUTH=user:pass      # if the endpoint asks for it
+export MILPA_AGENT_BASE_URL=http://llama.local:11434   # the endpoint's root, without /v1
+export MILPA_AGENT_API_KEY=...                       # if the endpoint asks for a key
+export MILPA_AGENT_BASIC_AUTH=user:pass              # if it sits behind basic auth instead
 export MILPA_AGENT_MODEL=qwen3-coder:30b
-php bin/coa agent "which plugins are on?"
+php bin/coa agent "which plugins are on?" --sign
 ```
 
 A declared endpoint wins over any provider key sitting in the environment: whoever pointed their
 agent at a local model does not want a forgotten `ANTHROPIC_API_KEY` sending it elsewhere — and
-billing them.
+billing them. For the same reason the endpoint is sent **`MILPA_AGENT_API_KEY` and nothing else**:
+`OPENAI_API_KEY` is a secret for OpenAI, and the house never hands it to whatever host
+`MILPA_AGENT_BASE_URL` names, even when that host speaks OpenAI's protocol. An endpoint that wants a key
+and gets none answers 401, and the run says which variable to set.
 
 It is a **terminal** operation only. An agent running over HTTP with the server's credentials is a
 different decision, and this template does not take it for you.
@@ -265,9 +309,13 @@ neither boots too; a scoped operation over HTTP then answers a `500` that names 
 Mint a token, expose the operation, call it:
 
 ```bash
-php bin/coa token:new ci --scopes=plugins:read
+php bin/coa token:new ci --scopes=plugins:read --sign
 #  token: 6e59b6a4…      ← shown once; only its hash is stored
 ```
+
+The token is **opaque**: 64 hex characters of random bytes. It is not a JWT — there is nothing in it
+to decode. Who it belongs to and what it may do live in this house, under the token's hash, and
+`token:revoke` takes effect because of that.
 
 ```php
 // config/http.php
@@ -462,10 +510,11 @@ src/Http/IdentityChain.php  the principals index.php runs before the handler: Be
 src/Http/IdentityWiring.php the registrations boot.php makes: the policy with milpa/auth, the Bearer with milpa/data
 src/Plugins/HelloPlugin  the welcome page and its design asset routes (fonts and files)
 src/Plugins/OperationsHttpPlugin  serves whatever config/http.php names
-src/Operations            this app's own atoms — `agent` and `token:*` live here
-src/Auth                  the API-token store and the verifier behind them
-src/Tui                   the agent conversation screen
 ```
+
+That is the whole of `src/`. The `agent` and `token:*` operations, the API-token store and its verifier,
+and the conversation screen are not copied into your app: they ship in `milpa/app-runtime` and appear
+when the capability they need is enabled (`coa capabilities` lists which).
 
 `config/plugins.php` is a list, not a scan. What runs in this app is a versioned decision — a plugin
 that installs itself from the network is an attack surface, not a convenience.
