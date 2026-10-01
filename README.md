@@ -29,6 +29,9 @@ php bin/coa capabilities:enable milpa/mcp-server --dry-run
 php bin/coa capabilities:enable milpa/mcp-server --sign
 ```
 
+New to the words? **[GUIDE.md](GUIDE.md)** takes a new house to a steady one, one command per step, naming
+operations, signing, the constitution, capabilities, trials, seats and grants in the order you meet them.
+
 ## What `coa` is
 
 `coa` does not implement any command. It boots the kernel, collects the operations that packages and
