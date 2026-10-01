@@ -82,6 +82,42 @@ final class OptIn
     }
 
     /**
+     * Has this house DECLARED every operation provider the package's manifest names?
+     *
+     * Installed is not declared. `composer require` only puts the code in vendor/; it is
+     * `capabilities:enable <package>` that writes the manifest's providers into config/operations.php,
+     * and only then does the app offer those operations. The suite runs in both houses — a fresh one,
+     * where CI installs the opt-ins with Composer alone, and one somebody already enabled — so a test that
+     * asks "does the app offer X" must read the declaration instead of assuming the fresh state. The
+     * invariant is the same in both: offered exactly when declared (greenhouse decisions/0552).
+     */
+    public static function declaresOperationsOf(string $package, string $root): bool
+    {
+        $manifest = $root . '/vendor/' . $package . '/composer.json';
+        if (!is_file($manifest)) {
+            return false;
+        }
+
+        /** @var array{extra?: array{milpa?: array{capability?: array{operations?: list<string>}}}} $read */
+        $read = json_decode((string) file_get_contents($manifest), true, 512, \JSON_THROW_ON_ERROR);
+        $providers = $read['extra']['milpa']['capability']['operations'] ?? [];
+        if ($providers === []) {
+            return false;
+        }
+
+        /** @var list<class-string> $declared */
+        $declared = require $root . '/config/operations.php';
+        $declared = array_map(static fn (string $class): string => ltrim($class, '\\'), $declared);
+        foreach ($providers as $provider) {
+            if (!\in_array(ltrim($provider, '\\'), $declared, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Skip this method unless every named symbol is present — and say what would bring it back.
      *
      * The form for a method that is frontier ALL THE WAY DOWN. A skip that does not teach is the
