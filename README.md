@@ -9,6 +9,9 @@
 
 # milpa/framework
 
+**Aprende en español:** [Curso para construir y fundar tu casa Milpa](https://github.com/getmilpa/academy/blob/main/cursos/casa-milpa/README.md).
+Incluye conceptos, arquitectura, fronteras y un dominio de préstamos con código y pruebas ejecutables.
+
 The `composer create-project` starting point for a Milpa app: a runtime where **every capability is a
 declared Operation**, reachable from the terminal, from MCP and from a TUI at once.
 
