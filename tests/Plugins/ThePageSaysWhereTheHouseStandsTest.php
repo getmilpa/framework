@@ -39,7 +39,7 @@ final class ThePageSaysWhereTheHouseStandsTest extends TestCase
             'ok' => true,
             'app' => [
                 'name' => 'casa',
-                'root' => '/home/rod/secret/path/casa',
+                'root' => '/home/operator/secret/path/casa',
                 'foundation' => 'founded',
                 'foundation_says' => 'Call `foundation:found` with the domain the HUMAN named.',
             ],
@@ -88,7 +88,7 @@ final class ThePageSaysWhereTheHouseStandsTest extends TestCase
     {
         $html = $this->page(static fn (): HouseState => HouseState::fromAnswer(self::answer()));
 
-        self::assertStringNotContainsString('/home/rod/secret/path/casa', $html, 'the app root is a filesystem path');
+        self::assertStringNotContainsString('/home/operator/secret/path/casa', $html, 'the app root is a filesystem path');
         self::assertStringNotContainsString('/webauthn/enroll', $html, 'the paths enumerate the surface');
         self::assertStringNotContainsString('milpa/auth', $html, 'the names say which doors exist');
         self::assertStringNotContainsString('milpa/admin', $html);
