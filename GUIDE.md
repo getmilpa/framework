@@ -209,8 +209,8 @@ pauses in `ask` like yours do. Two things it cannot do until you decide: write i
 plugin, and call an operation built in this house.
 
 When its session meets either one, the call is **refused** and recorded, and the run ends *waiting for
-a grant*. A refusal is not a question, so `agent:answer` does not answer it. You answer with a **grant**
-that cites the refused call:
+a grant* (one exception, for an operation the session itself built, is below). A refusal is not a
+question, so `agent:answer` does not answer it. You answer with a **grant** that cites the refused call:
 
 ```bash
 php bin/coa agent:timeline --session=<id>               # the refused call shows `at: <n>`
@@ -238,6 +238,16 @@ php bin/coa identity:grant --session=<id> --seq=<n> --admits=<digest> --sign    
 Admitting an operation closes the write grant a seat held over its plugin: a seat builds a plugin or
 uses its operations, not both at once. And an admitted operation that writes still pauses in `ask`,
 like any call that changes the house.
+
+One case goes differently. When the session that calls the operation is the one that built it — the
+seat holds the write grant over that plugin, and this same session scaffolded the operation and adopted
+it — the call is still refused and recorded, but the run does not stop there. The house runs the call
+once in a **rehearsal** (in its own words, *a copy of the house without its state, discarded after the
+call*) and hands the agent what the call answered there, marked `ran_in_trial: true, applied: false`.
+The agent goes on. Nothing changes in the house and nothing is admitted: `identity:seats` still lists
+the operation under `unadmitted`, the refusal still shows in `agent:timeline`, and the run's closing
+lines say `rehearsed`, with `applied: no`. A new session of the same seat that makes the same call ends
+waiting for a grant, as above.
 
 Do not confuse this with `agent --grant=...`. That one is a *launch grant*: consent you give when you
 start a run, for an operation it would otherwise pause on. `agent "..." --grant=sandbox:promote --sign`
