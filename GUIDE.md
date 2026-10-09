@@ -119,28 +119,30 @@ Asking the agent is a lasting change too, so it is signed. Each run belongs to a
 php bin/coa agent "Scaffold TagsController in the Notes plugin at /tags, method index" --sign
 ```
 
-A session has a **mode**. In `ask` (the default) it pauses before a change that needs your consent, in
-`acknowledge` it says so and carries on, and in `auto` it carries on alone. No mode ever skips a
-signature. When it pauses, the output names the session and the exact command to answer:
+A session has a **mode**. In `ask` (the default) it pauses before a call whose scope the signer has not
+been admitted; in `acknowledge` it says so and carries on; in `auto` it carries on alone. No mode ever
+skips a signature. A founder signing for a verb they have admitted does not pause at all — the run
+scaffolds in a trial and ends with its answer, leaving the trial for you to promote (step 8). A pause
+belongs to a **seat** that meets a scope it was not admitted (step 9). When it pauses, the output names
+the session and the exact command to answer:
 
 ```bash
 php bin/coa agent:answer --session=<id> --answer=yes --sign
-php bin/coa agent "continue" --session=<id> --sign
 ```
 
-Answering does not resume the run by itself. The `continue` call does. A run can pause more than
-once, for example before running the tests or before adopting its work (that is a *promotion* of a
-*trial*, step 8). Answer each pause the same way. A run that ends with `steps_exhausted` used its step
-ceiling (12 unless you pass `--steps=<n>`), and another `continue` picks it up. When the session's work
-is already verified, `continue` answers without calling the model.
+When you answer `yes`, the house runs that call and **continues once on its own**, exercising the
+capability before it closes — you no longer send a separate `continue` for the step you consented to. A
+run that pauses again is answered the same way. A run that stopped at its step ceiling ends
+`steps_exhausted` (12 unless you pass `--steps=<n>`); `php bin/coa agent "continue" --session=<id> --sign`
+picks it up, and when the session's work is already verified that `continue` answers without the model.
 
 ## 8. Trials: the agent works on a copy
 
 The agent's changes do not land in the house directly. Each one runs in a **trial**, a disposable copy
 of the house (`sandbox` is the operations' prefix). The house adopts a trial only through
-**promotion**. Usually the agent asks for it: in `ask` mode that is the pause you answered in step 7,
-and a longer task pauses once per promotion, registration or discard, each answered the same way. You
-can also act on trials yourself. These are lasting changes too, so they are signed:
+**promotion**. A run you signed for as a founder scaffolds in a trial and ends leaving it open — it does
+not ask; you promote it. (A seat whose scope was not admitted pauses instead, step 9.) You act on trials
+yourself, and these are lasting changes, so they are signed:
 
 ```bash
 php bin/coa sandbox:list                                # open trials and what each one changed
@@ -172,10 +174,18 @@ prints `php bin/coa identity:accept --invite=... --sign`. Run it once, within th
 `GNUPGHOME` set to the resident's keyring. From then on, signing `agent` runs with the resident's key
 makes them the resident's. You keep answering its pauses (`agent:answer`) and granting with yours.
 
-The seat starts with a fixed set of scopes: `agent:run`, `agent:read`, `plugins:read`, `plugins:write`
-and `plugins.config:write`. Those are the most it can do. When it needs more, for example `plugins.Blog:write` to create a new plugin
-named Blog, the call is **refused** and recorded in its session. A refusal is never a request. You
-answer it with a **grant** of exactly that scope, citing the refused call:
+The seat starts with **no verb of its own**: `php bin/coa identity:seats` shows its `scopes`, `admitted`
+and `unadmitted` all empty. A seat uses a verb only once a person has **admitted** it that scope. A
+capability the house has built is either *being built* or *admitted*, never both, and you admit one of
+its scopes to a seat ahead of any refusal:
+
+```bash
+php bin/coa identity:admit --seat=<fingerprint> --scope=<capability:verb> --sign
+```
+
+When a seat's session instead *meets* a scope it was not admitted, the call is **refused** and recorded
+in its session. A refusal is never a request. You answer it with a **grant** of exactly that scope,
+citing the refused call:
 
 ```bash
 php bin/coa agent:timeline --session=<id>               # the refused call shows `at: <n>`
