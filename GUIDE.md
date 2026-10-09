@@ -110,8 +110,8 @@ php bin/coa provider:declare agent.apiKey --value="..." --sign    # only if the 
 php bin/coa agent:model
 ```
 
-`config:set` writes to `.milpa/agent.json`, which is committed. `provider:declare` writes to
-`.milpa/secrets.json`, which is git-ignored and never echoed back.
+`config:set` writes to `.milpa/agent.json`, which git does not ignore: you commit it. `provider:declare`
+writes to `.milpa/secrets.json`, which is git-ignored and never echoed back.
 
 Asking the agent is a lasting change too, so it is signed. Each run belongs to a **session**:
 
@@ -119,30 +119,38 @@ Asking the agent is a lasting change too, so it is signed. Each run belongs to a
 php bin/coa agent "Scaffold TagsController in the Notes plugin at /tags, method index" --sign
 ```
 
-A session has a **mode**. In `ask` (the default) it pauses before a call whose scope the signer has not
-been admitted; in `acknowledge` it says so and carries on; in `auto` it carries on alone. No mode ever
-skips a signature. A founder signing for a verb they have admitted does not pause at all — the run
-scaffolds in a trial and ends with its answer, leaving the trial for you to promote (step 8). A pause
-belongs to a **seat** that meets a scope it was not admitted (step 9). When it pauses, the output names
-the session and the exact command to answer:
+What the agent scaffolds does not land in the house: it runs in a **trial** (step 8). That run does not
+pause. It ends with its answer and leaves the trial open for you to adopt.
+
+A session has a **mode**. In `ask` (the default) it pauses before a call that would change the house
+itself, such as adopting its own trial (`sandbox:promote`). The output shows the question, the session
+and the exact command to answer:
 
 ```bash
 php bin/coa agent:answer --session=<id> --answer=yes --sign
 ```
 
-When you answer `yes`, the house runs that call and **continues once on its own**, exercising the
-capability before it closes — you no longer send a separate `continue` for the step you consented to. A
-run that pauses again is answered the same way. A run that stopped at its step ceiling ends
-`steps_exhausted` (12 unless you pass `--steps=<n>`); `php bin/coa agent "continue" --session=<id> --sign`
-picks it up, and when the session's work is already verified that `continue` answers without the model.
+With `--mode=acknowledge` or `--mode=auto` the same call runs without a pause. No mode skips a
+signature.
+
+An answer is recorded; it does not resume the run. `agent:answer` prints the command that does, and the
+call you said yes to runs then:
+
+```bash
+php bin/coa agent "continue" --session=<id> --sign
+```
+
+A run also stops when it runs out of steps. In `ask` it ends `steps_exhausted` after 12, or after the
+number you pass as `--steps=<n>`, and the same `continue` picks it up. In `auto` a run takes up to 40
+steps and the house continues it once on its own, to 60 in all, before it stops the same way. When the
+house has already verified a session's work, `continue` says so and answers without calling the model.
 
 ## 8. Trials: the agent works on a copy
 
 The agent's changes do not land in the house directly. Each one runs in a **trial**, a disposable copy
 of the house (`sandbox` is the operations' prefix). The house adopts a trial only through
-**promotion**. A run you signed for as a founder scaffolds in a trial and ends leaving it open — it does
-not ask; you promote it. (A seat whose scope was not admitted pauses instead, step 9.) You act on trials
-yourself, and these are lasting changes, so they are signed:
+**promotion**. A run that scaffolds ends leaving its trial open: you adopt it, or the agent asks to
+(step 7). You act on trials yourself, and the three commands that change something are signed:
 
 ```bash
 php bin/coa sandbox:list                                # open trials and what each one changed
@@ -151,9 +159,29 @@ php bin/coa sandbox:discard --workspace=<id> --sign     # throw the trial away
 php bin/coa sandbox:undo --workspace=<id> --sign        # reverse a promotion from the pre-image it kept
 ```
 
-A promotion the house cannot boot with is refused and rolled back, so nothing broken gets adopted. A
-finished run can leave a trial with no changes behind. `sandbox:list` shows it, and discarding it is
-safe.
+A promotion is checked before anything is written. If a file the trial changed has also changed in the
+house since, the trial is refused (*the target moved since the trial*): scaffold again. And the house is
+booted with the change beside the live one; if it does not boot, the promotion is refused and the live
+files are never touched.
+
+A finished run can leave a trial with no changes behind. `sandbox:list` shows it, and discarding it is
+safe. The house keeps the 24 newest open trials and drops older ones.
+
+### What the house may adopt on its own
+
+Nothing, until you say so. `sandbox:admitted` lists the operations whose trial the house can adopt by
+itself once it verifies — registering a plugin, seeding an entity's rows, and `make` of a page, a
+plugin, an operation or an entity — and prints the one signed command that admits them all:
+
+```bash
+php bin/coa sandbox:admitted
+php bin/coa sandbox:admit --everything=<digest> --sign
+php bin/coa sandbox:withdraw --operation=make --what=entity --sign    # take one back
+```
+
+After that, a run in `auto` that scaffolds one of those adopts its own trial: asked for an entity, it
+ends with the entity in the house. In `ask` and `acknowledge` nothing changes, and the trial stays open
+for you. Anything that is not on the list, a controller for example, stays in its trial in every mode.
 
 ## 9. Seats and grants: the agent with its own key
 
@@ -174,32 +202,47 @@ prints `php bin/coa identity:accept --invite=... --sign`. Run it once, within th
 `GNUPGHOME` set to the resident's keyring. From then on, signing `agent` runs with the resident's key
 makes them the resident's. You keep answering its pauses (`agent:answer`) and granting with yours.
 
-The seat starts with **no verb of its own**: `php bin/coa identity:seats` shows its `scopes`, `admitted`
-and `unadmitted` all empty. A seat uses a verb only once a person has **admitted** it that scope. A
-capability the house has built is either *being built* or *admitted*, never both, and you admit one of
-its scopes to a seat ahead of any refusal:
+`php bin/coa identity:seats` shows what the seat holds. It starts with a fixed set of **scopes** —
+`agent:run`, `agent:read`, `plugins:read`, `plugins:write`, `plugins.config:write` and
+`milpa:component:data-table:*` — and with nothing under `admitted`. With those it runs sessions and
+pauses in `ask` like yours do. Two things it cannot do until you decide: write into a particular
+plugin, and call an operation built in this house.
 
-```bash
-php bin/coa identity:admit --seat=<fingerprint> --scope=<capability:verb> --sign
-```
-
-When a seat's session instead *meets* a scope it was not admitted, the call is **refused** and recorded
-in its session. A refusal is never a request. You answer it with a **grant** of exactly that scope,
-citing the refused call:
+When its session meets either one, the call is **refused** and recorded, and the run ends *waiting for
+a grant*. A refusal is not a question, so `agent:answer` does not answer it. You answer with a **grant**
+that cites the refused call:
 
 ```bash
 php bin/coa agent:timeline --session=<id>               # the refused call shows `at: <n>`
 php bin/coa identity:grant --session=<id> --seq=<n> --sign
 ```
 
-The refusal's own text says the grant can be made "in the panel". That is the admin panel
-(`milpa/admin`). From the terminal, `identity:grant` is the same act. A grant over a plugin that already exists also needs `--existing=<Plugin>`, because it opens write
-access to the whole plugin, and the house wants you to name it on purpose.
+The house works out the scope from the call; you never type one. Then run
+`php bin/coa agent "continue" --session=<id> --sign` with the resident's key, and the house opens that
+run by making the refused call itself.
 
-Do not confuse this with `agent --grant=...`. That one is a *launch grant*: consent you give in advance
-to a session (`--session=<id>` is required) for operations it would otherwise pause on. `agent:answer`
-consents to one question already asked, and `--grant` consents before the question comes. Neither
-one stands in for a signature or a scope.
+The refusal's own text points to the panel (Agent → Decisions). From the terminal, `identity:grant`
+does it. A grant over a plugin that already exists opens write access to all of it, so the house
+refuses it until you name the plugin on purpose with `--existing=<Plugin>`.
+
+An operation built in this house (one you scaffolded with `make operation`, say) is not the seat's to
+call until you **admit** it, whatever scopes the seat holds. `identity:seats` lists it under
+`unadmitted`, with what it does and a `contract` digest. You admit by repeating that digest, so you
+admit what you read:
+
+```bash
+php bin/coa identity:admit --seat=<fingerprint> --admits=<digest> --sign        # before any refusal
+php bin/coa identity:grant --session=<id> --seq=<n> --admits=<digest> --sign    # answering one
+```
+
+Admitting an operation closes the write grant a seat held over its plugin: a seat builds a plugin or
+uses its operations, not both at once. And an admitted operation that writes still pauses in `ask`,
+like any call that changes the house.
+
+Do not confuse this with `agent --grant=...`. That one is a *launch grant*: consent you give when you
+start a run, for an operation it would otherwise pause on. `agent "..." --grant=sandbox:promote --sign`
+adopts its trial without asking. `agent:answer` consents to one question already asked, and `--grant`
+consents before the question comes. Neither one stands in for a signature or a scope.
 
 ## 10. Decisions and evidence
 
@@ -213,8 +256,13 @@ house generates without a control proves nothing. One file per measured change, 
 - **Check**: the exact command and what it printed, for example `php bin/coa test`, a `curl` to a
   route, or `php bin/coa routes:list`.
 - **Positive control**: the same check against a state where it *must* fail, showing that the check can
-  see the defect. `test:baseline` before and `test:delta` after give you both halves for the suite.
+  see the defect. `test:baseline` before and `test:delta` after give you both halves for the suite:
+  the delta lists the failures that are new, resolved and unchanged.
 - **Verdict**: what the check and the control together let you say, and what they do not.
+
+`php bin/coa test` will report one failure you have not caused: `make` in step 6 left
+`tests/Plugins/Notes/NoteTest.php`, a test that fails on purpose until you write in it what `Note` must
+do.
 
 `.milpa/evidence/README.md` carries the same template. Write one now for what you adopted in steps 6
 to 9: a `curl` to each route as the check, and a route that does not exist (a 404) as its control.
