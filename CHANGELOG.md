@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.55.2](https://github.com/getmilpa/framework/compare/v0.55.1...v0.55.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* a new app passes its own static analysis, and CI keeps it so ([#168](https://github.com/getmilpa/framework/issues/168)) ([15b13ed](https://github.com/getmilpa/framework/commit/15b13edc4e2ad288416d203dc7ce5c5e9bf81366))
+
 ## [0.55.1](https://github.com/getmilpa/framework/compare/v0.55.0...v0.55.1) (2026-10-01)
 
 
