@@ -116,9 +116,10 @@ $broken = null;
 // Whether the stale worker may leave: only for a house that boots. Otherwise the house is BROKEN for this
 // worker: it stays alive (a replacement would die at boot), says why once in the log (and again only when
 // the reason changes), and answers every request with the refusal — never with the old kernel.
-// A runtime older than 0.197 cannot ask (no `nextBootFails()`): the worker leaves as 0505 had it.
+// Every runtime this skeleton resolves can be asked: its floor in composer.json is past the release that
+// brought `nextBootFails()`. No definition at all (the include failed) is the one case that cannot.
 $mayLeave = static function (string $changed) use (&$broken, $definition): bool {
-    $why = $definition !== null && method_exists($definition, 'nextBootFails') ? $definition->nextBootFails() : null;
+    $why = $definition?->nextBootFails();
     if ($why === null) {
         return true;
     }

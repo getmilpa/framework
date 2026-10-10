@@ -80,6 +80,11 @@ jobs:
           cd "$app"
           php -r '$record = json_decode(file_get_contents(".milpa/framework.json"), true); exit(isset($record["born"]) && !file_exists(".git") ? 0 : 1);'
           vendor/bin/phpunit --fail-on-warning --fail-on-phpunit-warning
+          # THE HOUSE PASSES ITS OWN STATIC ANALYSIS. The skeleton ships PHPStan and a config (level 6 over src,
+          # public and config), and nothing ran it: a guard for a runtime below the skeleton's own floor sat
+          # dead in public/worker.php, and every new app failed its first `vendor/bin/phpstan analyse`
+          # (greenhouse evidence/1187). The house is analysed the way its owner would: its config, no flags.
+          vendor/bin/phpstan analyse --no-progress --memory-limit=1G
 
       # The same suite in a house that ENABLED its capabilities (greenhouse decisions/0552). Every other
       # step installs the opt-ins with Composer alone, so config/ never declares them; a person runs
@@ -105,6 +110,9 @@ jobs:
           grep -q 'DevToolsOperations' config/operations.php
           grep -q 'PasskeyPlugin' config/plugins.php
           vendor/bin/phpunit --fail-on-phpunit-warning
+          # And the same analysis here: enabling writes config/operations.php and config/plugins.php, which the
+          # skeleton's config reads too.
+          vendor/bin/phpstan analyse --no-progress --memory-limit=1G
 
       # Y LA CARA COMPLETA. Los opt-in se instalan AQUI y no en require-dev: `create-project` instala
       # los dev, asi que ponerlos ahi haria que toda app naciera con los seis puestos — el corte seria
