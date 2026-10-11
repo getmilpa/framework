@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.55.3](https://github.com/getmilpa/framework/compare/v0.55.2...v0.55.3) (2026-10-11)
+
+
+### Bug Fixes
+
+* a fixture of the tests uses an obvious synthetic value (greenhouse evidence/1192) ([#172](https://github.com/getmilpa/framework/issues/172)) ([668d5c3](https://github.com/getmilpa/framework/commit/668d5c39fd35437291642a4afca4d2807069c470))
+* the README's own-model example and two fixtures name no lab machine (greenhouse evidence/1144) ([#170](https://github.com/getmilpa/framework/issues/170)) ([a5bbf9a](https://github.com/getmilpa/framework/commit/a5bbf9a26f731884f28f8fe8911184cd6e381077))
+
 ## [0.55.2](https://github.com/getmilpa/framework/compare/v0.55.1...v0.55.2) (2026-10-10)
 
 
