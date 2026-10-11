@@ -238,7 +238,7 @@ distinguish using your app from replying from memory.
 vLLM, a proxy — and no token leaves the building:
 
 ```bash
-export MILPA_AGENT_BASE_URL=http://llama.local:11434   # the endpoint's root, without /v1
+export MILPA_AGENT_BASE_URL=http://model.example:11434 # the endpoint's root, without /v1
 export MILPA_AGENT_API_KEY=...                       # if the endpoint asks for a key
 export MILPA_AGENT_BASIC_AUTH=user:pass              # if it sits behind basic auth instead
 export MILPA_AGENT_MODEL=qwen3-coder:30b
