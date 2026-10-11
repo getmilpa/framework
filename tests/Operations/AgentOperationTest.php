@@ -403,7 +403,7 @@ final class AgentOperationTest extends TestCase
      */
     public function testBasicAuthBecomesAnAuthorizationHeader(): void
     {
-        putenv('MILPA_AGENT_BASIC_AUTH=llama:llam4');
+        putenv('MILPA_AGENT_BASIC_AUTH=example-user:example-password');
 
         try {
             $agente = new AgentOperations(new DIContainer());
@@ -411,7 +411,7 @@ final class AgentOperationTest extends TestCase
             /** @var array<string, string> $headers */
             $headers = $metodo->invoke($agente);
 
-            self::assertSame('Basic ' . base64_encode('llama:llam4'), $headers['Authorization']);
+            self::assertSame('Basic ' . base64_encode('example-user:example-password'), $headers['Authorization']);
         } finally {
             putenv('MILPA_AGENT_BASIC_AUTH');
         }
