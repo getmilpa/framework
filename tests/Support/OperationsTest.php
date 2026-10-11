@@ -281,7 +281,7 @@ final class OperationsTest extends TestCase
 
         $contenedor = new DIContainer();
         $contenedor->registerService(\Milpa\Runtime\Config::class, new \Milpa\Runtime\Config([
-            'agent' => ['baseUrl' => 'https://llama.local', 'model' => 'qwen3-coder:30b'],
+            'agent' => ['baseUrl' => 'https://model.example', 'model' => 'qwen3-coder:30b'],
         ]));
 
         $ops = new AgentOperations($contenedor);

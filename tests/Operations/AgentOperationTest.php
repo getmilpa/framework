@@ -350,7 +350,7 @@ final class AgentOperationTest extends TestCase
         OptIn::needs(\Milpa\Agent\AutonomyMode::class, \Milpa\AiGateway\OptionTable::class, \Milpa\EventStore\InMemoryEventStore::class);
 
         putenv('ANTHROPIC_API_KEY=una-llave-olvidada');
-        putenv('MILPA_AGENT_BASE_URL=https://llama.local');
+        putenv('MILPA_AGENT_BASE_URL=https://model.example');
         putenv('MILPA_AGENT_MODEL=qwen3-coder:30b');
         putenv('MILPA_AGENT_API_KEY=local');
 
